@@ -332,7 +332,7 @@ with tab_calibration:
     with col_rel1:
         img_path = PLOTS_DIR / f"reliability_{dataset_key}.png"
         if img_path.exists():
-            st.image(str(img_path), caption=f"Empirical vs Nominal Quantile Reliability ({dataset_key.upper()})", use_column_width=True)
+            st.image(str(img_path), caption=f"Empirical vs Nominal Quantile Reliability ({dataset_key.upper()})", use_container_width=True)
         else:
             st.info(f"Reliability diagram not found at {img_path}. Run python src/run_calibration.py to generate it.")
 
