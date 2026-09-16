@@ -1,0 +1,76 @@
+{
+  "name": "gefcom_baselines",
+  "config": {
+    "experiment_name": "gefcom_baselines",
+    "dataset": "gefcom",
+    "target_col": "load",
+    "split": {
+      "train_start": "2012-01-01 00:00:00",
+      "train_end": "2014-12-31 23:00:00",
+      "val_start": "2015-01-01 00:00:00",
+      "val_end": "2015-12-31 23:00:00",
+      "test_start": "2016-01-01 00:00:00",
+      "test_end": "2016-12-31 23:00:00"
+    },
+    "features": {
+      "lags": [
+        1,
+        2,
+        3,
+        24,
+        168
+      ],
+      "rolling_windows": [
+        24,
+        168
+      ],
+      "cyclical_encoding": true,
+      "holiday_calendar": true,
+      "temperature": true
+    },
+    "models": {
+      "lightgbm": {
+        "n_estimators": 1000,
+        "learning_rate": 0.03,
+        "num_leaves": 31,
+        "max_depth": 6,
+        "early_stopping_rounds": 50
+      },
+      "xgboost": {
+        "n_estimators": 1000,
+        "learning_rate": 0.03,
+        "max_depth": 6,
+        "early_stopping_rounds": 50
+      },
+      "prophet": {
+        "seasonality_mode": "additive",
+        "changepoint_prior_scale": 0.05
+      }
+    }
+  },
+  "metrics": {
+    "lightgbm": {
+      "MAE": 32.73,
+      "RMSE": 44.67,
+      "MAPE": 0.96
+    },
+    "xgboost": {
+      "MAE": 32.67,
+      "RMSE": 44.39,
+      "MAPE": 0.96
+    },
+    "prophet": {
+      "MAE": 586.37,
+      "RMSE": 736.84,
+      "MAPE": 16.8
+    },
+    "naive_seasonal_1wk": {
+      "MAE": 343.37,
+      "RMSE": 491.25,
+      "MAPE": 9.69
+    }
+  },
+  "runtime_seconds": 79.49,
+  "timestamp": "2026-09-09T03:22:49.419466",
+  "status": "SUCCESS"
+}

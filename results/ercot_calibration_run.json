@@ -1,0 +1,57 @@
+{
+  "name": "ercot_calibration",
+  "config": {
+    "experiment_name": "ercot_calibration",
+    "dataset": "ercot",
+    "target_col": "load",
+    "models": [
+      "lightgbm_quantile",
+      "xgboost_quantile",
+      "prophet",
+      "chronos_small_512"
+    ],
+    "nominal_quantiles": 19,
+    "prediction_interval": 0.9
+  },
+  "metrics": {
+    "lightgbm_quantile": {
+      "MAE": 712.38,
+      "RMSE": 1149.14,
+      "MAPE": 1.26,
+      "CRPS": 827.49,
+      "PICP_90": 88.11,
+      "Width_90": 5863.02,
+      "ECE": 0.0898
+    },
+    "xgboost_quantile": {
+      "MAE": 698.26,
+      "RMSE": 1139.26,
+      "MAPE": 1.23,
+      "CRPS": 854.69,
+      "PICP_90": 88.63,
+      "Width_90": 6327.55,
+      "ECE": 0.0926
+    },
+    "prophet": {
+      "MAE": 5304.77,
+      "RMSE": 6935.9,
+      "MAPE": 9.75,
+      "CRPS": 4522.44,
+      "PICP_90": 94.71,
+      "Width_90": 39696.6,
+      "ECE": 0.0742
+    },
+    "chronos_small_512": {
+      "MAE": 1906.46,
+      "RMSE": 2961.59,
+      "MAPE": 3.59,
+      "CRPS": 1429.61,
+      "PICP_90": 77.39,
+      "Width_90": 5679.03,
+      "ECE": 0.049
+    }
+  },
+  "runtime_seconds": 112.98,
+  "timestamp": "2026-09-09T03:47:00.684631",
+  "status": "SUCCESS"
+}

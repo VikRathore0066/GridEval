@@ -1,0 +1,9 @@
+experiment_name: "ercot_tsfm"
+dataset: "ercot"
+target_col: "load"
+model_id: "amazon/chronos-t5-small"
+tsfm:
+  context_lengths: [72, 168, 512, 1000]
+  horizon: 24
+  step: 24
+  num_samples: 50

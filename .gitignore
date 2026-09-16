@@ -1,0 +1,34 @@
+# Python & Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Raw Large Datasets (exceeding GitHub file size limits)
+datasets/
+*.csv.gz
+*.rda
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# OS / Editor artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

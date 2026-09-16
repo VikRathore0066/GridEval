@@ -1,0 +1,22 @@
+{
+  "lightgbm": {
+    "MAE": 32.73,
+    "RMSE": 44.67,
+    "MAPE": 0.96
+  },
+  "xgboost": {
+    "MAE": 32.67,
+    "RMSE": 44.39,
+    "MAPE": 0.96
+  },
+  "prophet": {
+    "MAE": 586.37,
+    "RMSE": 736.84,
+    "MAPE": 16.8
+  },
+  "naive_seasonal_1wk": {
+    "MAE": 343.37,
+    "RMSE": 491.25,
+    "MAPE": 9.69
+  }
+}

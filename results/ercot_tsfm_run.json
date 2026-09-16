@@ -1,0 +1,53 @@
+{
+  "name": "ercot_tsfm",
+  "config": {
+    "experiment_name": "ercot_tsfm",
+    "dataset": "ercot",
+    "target_col": "load",
+    "model_id": "amazon/chronos-t5-small",
+    "tsfm": {
+      "context_lengths": [
+        72,
+        168,
+        512,
+        1000
+      ],
+      "horizon": 24,
+      "step": 24,
+      "num_samples": 50
+    }
+  },
+  "metrics": {
+    "72": {
+      "MAE": 2122.63,
+      "RMSE": 3208.65,
+      "MAPE": 4.02,
+      "Coverage_90": 79.39,
+      "Width_90": 7544.69
+    },
+    "168": {
+      "MAE": 1939.12,
+      "RMSE": 3015.86,
+      "MAPE": 3.65,
+      "Coverage_90": 78.7,
+      "Width_90": 6342.41
+    },
+    "512": {
+      "MAE": 1921.32,
+      "RMSE": 2976.93,
+      "MAPE": 3.61,
+      "Coverage_90": 75.74,
+      "Width_90": 5580.7
+    },
+    "1000": {
+      "MAE": 1901.46,
+      "RMSE": 2942.93,
+      "MAPE": 3.59,
+      "Coverage_90": 75.9,
+      "Width_90": 5550.68
+    }
+  },
+  "runtime_seconds": 142.71,
+  "timestamp": "2026-09-09T03:25:12.157489",
+  "status": "SUCCESS"
+}

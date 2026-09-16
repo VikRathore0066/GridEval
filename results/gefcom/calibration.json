@@ -1,0 +1,38 @@
+{
+  "lightgbm_quantile": {
+    "MAE": 47.07,
+    "RMSE": 62.95,
+    "MAPE": 1.4,
+    "CRPS": 50.43,
+    "PICP_90": 87.8,
+    "Width_90": 336.66,
+    "ECE": 0.054
+  },
+  "xgboost_quantile": {
+    "MAE": 49.12,
+    "RMSE": 65.38,
+    "MAPE": 1.45,
+    "CRPS": 55.4,
+    "PICP_90": 86.92,
+    "Width_90": 393.9,
+    "ECE": 0.0482
+  },
+  "prophet": {
+    "MAE": 586.37,
+    "RMSE": 736.84,
+    "MAPE": 16.8,
+    "CRPS": 467.3,
+    "PICP_90": 94.51,
+    "Width_90": 3964.34,
+    "ECE": 0.2018
+  },
+  "chronos_small_512": {
+    "MAE": 152.45,
+    "RMSE": 235.1,
+    "MAPE": 4.21,
+    "CRPS": 114.37,
+    "PICP_90": 74.87,
+    "Width_90": 437.04,
+    "ECE": 0.0501
+  }
+}

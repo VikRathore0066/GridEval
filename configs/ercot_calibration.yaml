@@ -1,0 +1,10 @@
+experiment_name: "ercot_calibration"
+dataset: "ercot"
+target_col: "load"
+models:
+  - "lightgbm_quantile"
+  - "xgboost_quantile"
+  - "prophet"
+  - "chronos_small_512"
+nominal_quantiles: 19
+prediction_interval: 0.90

@@ -1,0 +1,76 @@
+{
+  "name": "ercot_baselines",
+  "config": {
+    "experiment_name": "ercot_baselines",
+    "dataset": "ercot",
+    "target_col": "load",
+    "split": {
+      "train_start": "2020-01-01 00:00:00",
+      "train_end": "2022-12-31 23:00:00",
+      "val_start": "2023-01-01 00:00:00",
+      "val_end": "2023-12-31 23:00:00",
+      "test_start": "2024-01-01 00:00:00",
+      "test_end": "2024-12-31 23:00:00"
+    },
+    "features": {
+      "lags": [
+        1,
+        2,
+        3,
+        24,
+        168
+      ],
+      "rolling_windows": [
+        24,
+        168
+      ],
+      "cyclical_encoding": true,
+      "holiday_calendar": true,
+      "temperature": false
+    },
+    "models": {
+      "lightgbm": {
+        "n_estimators": 1000,
+        "learning_rate": 0.03,
+        "num_leaves": 31,
+        "max_depth": 6,
+        "early_stopping_rounds": 50
+      },
+      "xgboost": {
+        "n_estimators": 1000,
+        "learning_rate": 0.03,
+        "max_depth": 6,
+        "early_stopping_rounds": 50
+      },
+      "prophet": {
+        "seasonality_mode": "additive",
+        "changepoint_prior_scale": 0.05
+      }
+    }
+  },
+  "metrics": {
+    "lightgbm": {
+      "MAE": 505.53,
+      "RMSE": 798.08,
+      "MAPE": 0.9
+    },
+    "xgboost": {
+      "MAE": 506.45,
+      "RMSE": 825.49,
+      "MAPE": 0.9
+    },
+    "prophet": {
+      "MAE": 5304.77,
+      "RMSE": 6935.9,
+      "MAPE": 9.75
+    },
+    "naive_seasonal_1wk": {
+      "MAE": 4478.53,
+      "RMSE": 6274.29,
+      "MAPE": 8.38
+    }
+  },
+  "runtime_seconds": 177.88,
+  "timestamp": "2026-09-09T03:21:29.902190",
+  "status": "SUCCESS"
+}

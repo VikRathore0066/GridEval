@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Dashboard Launcher (run_dashboard.py)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_dashboard.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Streamlit Dashboard (app.py)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "streamlit",
+            "args": [
+                "run",
+                "${workspaceFolder}/app.py",
+                "--server.port=8501"
+            ],
+            "jinja": true,
+            "justMyCode": true
+        }
+    ]
+}

@@ -1,0 +1,11 @@
+Dataset,Model,Type,MAE,RMSE,MAPE
+ERCOT,lightgbm,Classical,505.53,798.08,0.9
+ERCOT,xgboost,Classical,506.45,825.49,0.9
+ERCOT,prophet,Classical,5304.77,6935.9,9.75
+ERCOT,naive_seasonal_1wk,Classical,4478.53,6274.29,8.38
+ERCOT,Chronos-T5-Small (512h),Zero-Shot TSFM,1921.32,2976.93,3.61
+GEFCOM,lightgbm,Classical,32.73,44.67,0.96
+GEFCOM,xgboost,Classical,32.67,44.39,0.96
+GEFCOM,prophet,Classical,586.37,736.84,16.8
+GEFCOM,naive_seasonal_1wk,Classical,343.37,491.25,9.69
+GEFCOM,Chronos-T5-Small (512h),Zero-Shot TSFM,154.85,239.5,4.28
