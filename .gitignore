@@ -15,6 +15,7 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+uv.lock
 
 # Jupyter
 .ipynb_checkpoints/
