@@ -2,110 +2,117 @@
 
 GridEval benchmarks domain-trained classical ML models against pre-trained zero-shot Time Series Foundation Models (TSFMs) for electricity load forecasting across two power grid scales (ERCOT and GEFCom 2017).
 
+**Live Dashboard**: [https://grideval-5x6uktiqevdmtugeqgxm6l.streamlit.app/](https://grideval-5x6uktiqevdmtugeqgxm6l.streamlit.app/)
+
 ---
 
-## Research Scope & Datasets
+## Datasets & Split Protocol
 
-The benchmark evaluates models across two distinct power grid scales:
+The benchmark evaluates models across two power grids:
 
-1. ERCOT (Texas Interconnection):
+1. **ERCOT (Texas Interconnection)**:
    - Macro-scale power grid (~70,000 MW peak demand).
    - Hourly electricity demand spanning 2020 to 2024 (~43,800 timestamps).
-   - Characterized by rapid industrial load growth and high renewable penetration.
+   - High industrial load growth and renewable penetration.
 
-2. GEFCom 2017 (ISO-NE Connecticut Zone):
+2. **GEFCom 2017 (ISO-NE Connecticut Zone)**:
    - Regional-scale power grid (~4,000 MW peak demand).
    - Hourly electricity demand paired with drybulb and dewpoint temperature data (2012 to 2016).
-   - Characterized by distinct non-linear temperature-load relationships (summer cooling, winter heating).
+   - Non-linear temperature-load relationship (summer cooling, winter heating).
 
 ### Data Split Protocol
-A symmetrical 3-1-1 chronological split protocol is enforced across both grids to prevent temporal data leakage:
-- Training: 3 full years (26,280 hours)
-- Validation / Hyperparameter Tuning: 1 full year (8,760 hours)
-- Out-of-Sample Test Evaluation: 1 full year (8,760 hours)
+A chronological 3-1-1 split is applied across both grids to prevent temporal leakage:
+- **Train**: 3 years (26,280 hours)
+- **Validation**: 1 year (8,760 hours)
+- **Test**: 1 year (8,760 hours)
 
 ---
 
 ## Evaluated Models
 
-GridEval compares three paradigms of time-series modeling:
+1. **Supervised GBDTs (Domain-Trained)**:
+   - LightGBM & XGBoost with quantile loss (alpha = 0.05, 0.50, 0.95).
+   - Features: Autoregressive lags (t-1, t-2, t-3, t-24, t-168), rolling statistics (24h, 168h mean/std), calendar encodings, holiday indicators, and temperature interactions (temperature squared, dewpoint depression).
 
-1. Supervised Gradient Boosted Decision Trees (Domain-Trained):
-   - LightGBM & XGBoost with quantile pinball loss (alpha = 0.05, 0.50, 0.95).
-   - Features: Autoregressive lags (t-1, t-2, t-3, t-24, t-168), rolling statistics (24h, 168h means and standard deviations), calendar encodings, holiday indicators, and non-linear temperature interactions (temperature squared, dewpoint depression).
+2. **Classical & Heuristic Baselines**:
+   - Prophet: Additive model with weekly/yearly Fourier seasonality and holiday effects.
+   - Naive Seasonal: 168-hour persistence baseline (t = t-168).
 
-2. Classical Additive & Heuristic Baselines:
-   - Prophet: Decomposable additive model with weekly and yearly Fourier seasonality and holiday effects.
-   - Naive Seasonal: Deterministic 168-hour persistence baseline (load at hour t equals load at hour t-168).
-
-3. Pre-Trained Foundation Models (Zero-Shot TSFM):
-   - Amazon Chronos-T5 (Small): Transformer-based architecture pre-trained on diverse open and synthetic time-series corpora. Evaluated zero-shot without fine-tuning, sweeping context windows from 72h up to 1,000h.
+3. **Pre-Trained Foundation Models (Zero-Shot TSFM)**:
+   - Amazon Chronos-T5 (Small): Evaluated zero-shot without fine-tuning across context window sweeps from 72h to 1,000h.
 
 ---
 
-## Evaluation Framework
+## Evaluation Metrics
 
-GridEval benchmarks performance across two critical operational dimensions:
+### Point Forecasting Accuracy
+- **MAE**: Mean Absolute Error (MW)
+- **RMSE**: Root Mean Squared Error (MW)
+- **MAPE**: Mean Absolute Percentage Error (%)
 
-### 1. Point Forecasting Accuracy
-- Mean Absolute Error (MAE): Average absolute deviation in Megawatts (MW).
-- Root Mean Squared Error (RMSE): Quadratic error metric penalizing extreme outliers.
-- Mean Absolute Percentage Error (MAPE): Scale-independent percentage error.
-
-### 2. Probabilistic Calibration & Uncertainty
-- Continuous Ranked Probability Score (CRPS): Evaluates full predictive distributions for sharpness and calibration simultaneously.
-- Prediction Interval Coverage Probability (PICP): Empirical percentage of test observations falling within the nominal 90% confidence interval (target: 90.0%).
-- Mean Prediction Interval Width (MPIW): Measures sharpness (narrowness) of uncertainty bounds.
-- Expected Calibration Error (ECE): Quantifies average deviation across all quantile probability levels (5% through 95%).
+### Probabilistic Calibration & Uncertainty
+- **CRPS**: Continuous Ranked Probability Score (distributional sharpness and calibration)
+- **PICP (90%)**: Prediction Interval Coverage Probability (nominal target: 90.0%)
+- **MPIW (90%)**: Mean Prediction Interval Width (sharpness in MW)
+- **ECE**: Expected Calibration Error across all quantile levels (0.05 to 0.95)
 
 ---
 
-## Interactive Dashboard Features (`app.py`)
+## Empirical Benchmark Results
 
-The platform includes an interactive Streamlit application structured into five core modules:
+### 1. Point Forecasting Performance (Test Year)
 
-1. Tab 1: Leaderboard & Cross-Grid Comparison
-   - Side-by-side metric tables for point accuracy (MAE, RMSE, MAPE) and probabilistic calibration (CRPS, 90% PICP, MPIW, ECE).
-   - Filterable by single grid (ERCOT or GEFCom) or comprehensive cross-comparison.
+| Grid | Model | Type | MAE (MW) | RMSE (MW) | MAPE (%) |
+|---|---|---|---|---|---|
+| **ERCOT** | LightGBM | Classical ML | 505.53 | 798.08 | **0.90%** |
+| **ERCOT** | XGBoost | Classical ML | 506.45 | 825.49 | 0.90% |
+| **ERCOT** | Chronos-T5-Small (512h) | Zero-Shot TSFM | 1921.32 | 2976.93 | 3.61% |
+| **ERCOT** | Naive Seasonal (168h) | Baseline | 4478.53 | 6274.29 | 8.38% |
+| **ERCOT** | Prophet | Classical ML | 5304.77 | 6935.90 | 9.75% |
+| **GEFCom** | XGBoost | Classical ML | 32.67 | 44.39 | **0.96%** |
+| **GEFCom** | LightGBM | Classical ML | 32.73 | 44.67 | 0.96% |
+| **GEFCom** | Chronos-T5-Small (512h) | Zero-Shot TSFM | 154.85 | 239.50 | 4.28% |
+| **GEFCom** | Naive Seasonal (168h) | Baseline | 343.37 | 491.25 | 9.69% |
+| **GEFCom** | Prophet | Classical ML | 586.37 | 736.84 | 16.80% |
 
-2. Tab 2: Forecast Trajectories & Interval Visualizer
-   - Interactive Plotly time-series charts showing forecast median (P50), observed actuals, and 90% uncertainty ribbons (P05 to P95).
-   - Preset time windows: Whole Test Year (8,760 hours), Summer Peak Heatwave, Winter Cold Snap, Spring Shoulder Season, or Custom Date Picker.
-   - Dynamic window metric cards updating MAE, MAPE, interval coverage, and mean interval width on demand.
-   - Adaptive downsampling for large spans to maintain sub-50ms canvas rendering.
+### 2. Probabilistic Calibration Performance (Nominal 90% Intervals)
 
-3. Tab 3: Calibration & Reliability Analysis
-   - Empirical vs nominal quantile reliability curves for ERCOT and GEFCom.
-   - Quantitative evaluation of model overconfidence (Chronos under-coverage) vs calibrated quantile regression (GBDT coverage).
-
-4. Tab 4: Context Length Scaling Analysis
-   - Empirical scaling curves evaluating TSFM accuracy and coverage sensitivity across context lengths from 72h to 1,000h.
-   - Visualizes performance plateaus and inference latency trade-offs.
-
-5. Tab 5: Interactive Live Forecasting & Scenario Simulator
-   - Real-time scenario stress-testing engine allowing operators to simulate grid dispatch under custom operational conditions.
-   - Configurable forecast horizons: 24h (Day-Ahead), 48h (Two-Day), 72h (Three-Day), and 168h (7-Day Outlook).
-   - Stress-testing sliders: Temperature shock (-25°F to +25°F) with non-linear heating/cooling elasticity curves, and structural demand growth (-20% to +25%).
-   - Model selection: LightGBM Quantiles, XGBoost Quantiles, Chronos-T5 Zero-Shot, or Multi-Model Overlay.
-   - Operational KPIs: Simulated Peak Demand (MW), Integrated Energy (GWh/MWh), Required 90% Spinning Reserve Margin (MW), and Net Demand Shift vs Baseline.
-   - Tabular export: Full hourly simulated dispatch schedule downloadable as CSV.
+| Grid | Model | CRPS | PICP 90% (Target: 90%) | Width 90% (MW) | ECE |
+|---|---|---|---|---|---|
+| **ERCOT** | LightGBM Quantile | **827.49** | 88.11% | 5,863 MW | 0.0898 |
+| **ERCOT** | XGBoost Quantile | 854.69 | **88.63%** | 6,328 MW | 0.0926 |
+| **ERCOT** | Chronos-T5-Small (512h) | 1429.61 | 77.39% (Under-covered) | 5,679 MW | **0.0490** |
+| **ERCOT** | Prophet | 4522.44 | 94.71% (Over-wide) | 39,697 MW | 0.0742 |
+| **GEFCom** | LightGBM Quantile | **50.43** | **87.80%** | 337 MW | 0.0540 |
+| **GEFCom** | XGBoost Quantile | 55.40 | 86.92% | 394 MW | **0.0482** |
+| **GEFCom** | Chronos-T5-Small (512h) | 114.37 | 74.87% (Under-covered) | 437 MW | 0.0501 |
+| **GEFCom** | Prophet | 467.30 | 94.51% (Over-wide) | 3,964 MW | 0.2018 |
 
 ---
 
-## Key Empirical Findings
+## Key Findings
 
-1. Tabular GBDTs Outperform Zero-Shot TSFMs on Point Accuracy:
-   - LightGBM and XGBoost achieve ~0.90% MAPE on ERCOT and ~0.96% MAPE on GEFCom CT.
-   - Zero-shot Chronos-T5 achieves ~3.61% MAPE on ERCOT and ~4.28% MAPE on GEFCom CT.
-   - Domain-specific autoregressive features and calendar encodings provide stronger inductive bias for electrical grids than generalized zero-shot pre-training.
+1. **GBDTs outperform Zero-Shot TSFMs on point accuracy**:
+   - Feature-engineered LightGBM and XGBoost achieve ~0.90% to 0.96% MAPE across both grids, outperforming zero-shot Chronos-T5 (~3.61% to 4.28% MAPE). Domain-specific lag features and calendar interactions remain critical inductive biases for electrical grid demand.
 
-2. Zero-Shot Foundation Models Exhibit Severe Overconfidence:
-   - Chronos-T5 achieves only ~75.4% to 77.1% coverage for nominal 90% prediction intervals, underestimating real-world grid volatility.
-   - Quantile GBDTs achieve well-calibrated coverage (~87.2% to 88.5% PICP) while maintaining narrow interval widths.
+2. **Zero-shot TSFMs exhibit interval under-coverage**:
+   - Chronos-T5 achieves ~74.8% to 77.4% empirical coverage for nominal 90% prediction intervals, indicating overconfidence during peak and regime shifts.
+   - Quantile GBDTs provide well-calibrated intervals (~86.9% to 88.6% PICP) without excessive interval inflation.
 
-3. Context Window Scaling Plateaus:
-   - Increasing TSFM historical context window from 72h to 512h improves accuracy significantly.
-   - Beyond 512h (e.g., 720h and 1,000h), accuracy gains plateau and inference latency increases linearly without closing the gap to GBDTs.
+3. **Context window scaling reaches a plateau at 512 hours**:
+   - Extending Chronos context length from 72h to 512h yields noticeable error reduction. Beyond 512h (720h, 1,000h), accuracy gains plateau while inference latency scales linearly.
+
+---
+
+## Dashboard Structure (`app.py`)
+
+The Streamlit dashboard contains 5 analysis tabs:
+
+1. **Leaderboard & Cross-Grid Comparison**: Side-by-side metric tables for point accuracy and calibration across ERCOT and GEFCom.
+2. **Forecast Trajectories & Interval Visualizer**: Interactive Plotly time-series showing median predictions (P50), actual load, and 90% uncertainty bands across seasonal regimes (Heatwave, Cold Snap, Shoulder, Full Year).
+3. **Calibration & Reliability Analysis**: Empirical vs nominal quantile curves evaluating model coverage and ECE.
+4. **Context Length Scaling Analysis**: TSFM accuracy, coverage, and latency sensitivity curves across 72h to 1,000h context lengths.
+5. **Interactive Scenario Simulator**: Real-time stress-testing engine with temperature shock (+/-25 deg F) and structural demand growth (+/-25%) sliders, computing peak demand (MW), integrated energy (GWh), and spinning reserve requirements.
 
 ---
 
@@ -113,42 +120,40 @@ The platform includes an interactive Streamlit application structured into five 
 
 ```
 GridEval/
-|-- configs/            # Experiment YAML configuration files
+|-- configs/            # Experiment YAML configurations
 |-- datasets/           # Raw and yearly partitioned source data
-|-- data/processed/     # Cleaned, validated, and split Parquet files
+|-- data/processed/     # Cleaned and split Parquet files
 |-- notebooks/          # Exploratory Data Analysis (EDA)
 |-- results/            # Benchmark outputs (master_table.csv, calibration_master.csv)
-|   |-- ercot/          # ERCOT metrics, JSON runs, and model checkpoints
-|   |-- gefcom/         # GEFCom metrics, JSON runs, and model checkpoints
-|   `-- plots/          # Reliability diagrams and forecast curves
+|   |-- ercot/          # ERCOT JSON metrics and runs
+|   |-- gefcom/         # GEFCom JSON metrics and runs
+|   `-- plots/          # Reliability and calibration plots
 |-- src/                # Modular benchmark codebase
-|   |-- baselines.py        # GBDT and heuristic baseline training
-|   |-- tsfm_models.py      # Chronos zero-shot inference pipeline
+|   |-- baselines.py        # GBDT and heuristic baseline models
+|   |-- tsfm_models.py      # Chronos inference pipeline
 |   |-- features.py         # Lag, rolling, and temporal feature engineering
 |   |-- evaluation.py       # Vectorized accuracy, CRPS, PICP, and ECE routines
 |   |-- data_loader.py      # Chronological split validation and data ingestion
 |   |-- run_calibration.py  # Probabilistic calibration benchmarking suite
-|   |-- run_tsfm_sweep.py   # Context length ablation sweep (72h to 1000h)
-|   `-- main.py             # Master orchestration script
-|-- tests/              # Automated unit and integration test suite
-|-- app.py              # Interactive Streamlit evaluation and simulation dashboard
-|-- run_dashboard.py    # 1-Click VS Code and WSL browser bridge launcher
-|-- pyproject.toml      # Build system and dependency definitions
-`-- README.md
+|   |-- run_tsfm_sweep.py   # Context length sweep (72h to 1000h)
+|   |-- baseline_summary.py # Terminal summary printer
+|   `-- main.py             # Orchestration and table compilation
+|-- tests/              # Unit and integration test suite
+|-- app.py              # Streamlit evaluation and scenario dashboard
+|-- run_dashboard.py    # Local launcher script
+|-- requirements.txt    # Fast-deploy dependency manifest
+`-- pyproject.toml      # Build metadata and development configuration
 ```
 
 ---
 
-## Quick Start & Reproduction
+## Quick Start
 
 ### 1. Environment Setup
 ```bash
-# Create and activate Python virtual environment (Python 3.10 - 3.12 recommended)
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install project and dependencies in editable mode
-pip install -e .
+pip install -r requirements.txt
 ```
 
 ### 2. Run Test Suite
@@ -156,23 +161,23 @@ pip install -e .
 pytest tests/
 ```
 
-### 3. Execute Benchmarks
+### 3. Compile or Run Benchmarks
 ```bash
-# Run all benchmark stages and compile master summary tables
-python src/main.py
+# Compile summary CSV tables from benchmark runs
+python src/main.py --compile-only
 
-# Or run individual benchmark experiments
-python src/baselines.py
-python src/run_tsfm_sweep.py
-python src/run_calibration.py
+# Print baseline summary table to terminal
+python src/baseline_summary.py
+
+# Run all benchmark pipelines (skips completed stages)
+python src/main.py --skip-existing
 ```
 
-### 4. Launch Interactive Dashboard
-```bash
-streamlit run app.py
-```
-Or execute the 1-click launcher in VS Code:
+### 4. Launch Dashboard Locally
 ```bash
 python run_dashboard.py
 ```
-Access the dashboard at `http://localhost:8501` to inspect leaderboards, forecast trajectories, calibration curves, context length scaling plots, and the live scenario simulator.
+Or directly with Streamlit:
+```bash
+streamlit run app.py
+```
