@@ -31,6 +31,17 @@ PLOTS_DIR = RESULTS_DIR / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _eval_probabilistic(y_true, y_pred, samples, q05, q95, ece) -> dict:
+    point = compute_point_metrics(y_true, y_pred)
+    return {
+        **point,
+        "CRPS": round(compute_crps_empirical(samples, y_true), 2),
+        "PICP_90": round(compute_picp(y_true, q05, q95), 2),
+        "Width_90": round(compute_interval_width(q05, q95), 2),
+        "ECE": round(ece, 4),
+    }
+
+
 def train_quantile_lgbm(X_train, y_train, X_val, y_val, alpha: float):
     """Train LightGBM for target quantile alpha with pinball loss."""
     model = lgb.LGBMRegressor(
@@ -142,16 +153,8 @@ def run_calibration_suite(dataset_name: str, device: str = None) -> dict:
 
     ece_lgb, nom_lgb, emp_lgb = compute_ece_and_reliability(lgb_samples, y_test_arr)
     reliability_curves["LightGBM (Quantile)"] = (nom_lgb, emp_lgb)
-
-    point_lgb = compute_point_metrics(y_test_arr, lgb_q50)
-    results["lightgbm_quantile"] = {
-        **point_lgb,
-        "CRPS": round(compute_crps_empirical(lgb_samples, y_test_arr), 2),
-        "PICP_90": round(compute_picp(y_test_arr, lgb_q05, lgb_q95), 2),
-        "Width_90": round(compute_interval_width(lgb_q05, lgb_q95), 2),
-        "ECE": round(ece_lgb, 4),
-    }
-    print(f"  LightGBM -> MAE: {point_lgb['MAE']} MW, CRPS: {results['lightgbm_quantile']['CRPS']}, PICP 90%: {results['lightgbm_quantile']['PICP_90']}%, ECE: {results['lightgbm_quantile']['ECE']}")
+    results["lightgbm_quantile"] = _eval_probabilistic(y_test_arr, lgb_q50, lgb_samples, lgb_q05, lgb_q95, ece_lgb)
+    print(f"  LightGBM -> MAE: {results['lightgbm_quantile']['MAE']} MW, CRPS: {results['lightgbm_quantile']['CRPS']}, PICP 90%: {results['lightgbm_quantile']['PICP_90']}%, ECE: {results['lightgbm_quantile']['ECE']}")
 
     # 2. Quantile XGBoost
     print(f"Training quantile XGBoost models ({len(nominal_grid)} quantiles)...")
@@ -167,16 +170,8 @@ def run_calibration_suite(dataset_name: str, device: str = None) -> dict:
 
     ece_xgb, nom_xgb, emp_xgb = compute_ece_and_reliability(xgb_samples, y_test_arr)
     reliability_curves["XGBoost (Quantile)"] = (nom_xgb, emp_xgb)
-
-    point_xgb = compute_point_metrics(y_test_arr, xgb_q50)
-    results["xgboost_quantile"] = {
-        **point_xgb,
-        "CRPS": round(compute_crps_empirical(xgb_samples, y_test_arr), 2),
-        "PICP_90": round(compute_picp(y_test_arr, xgb_q05, xgb_q95), 2),
-        "Width_90": round(compute_interval_width(xgb_q05, xgb_q95), 2),
-        "ECE": round(ece_xgb, 4),
-    }
-    print(f"  XGBoost  -> MAE: {point_xgb['MAE']} MW, CRPS: {results['xgboost_quantile']['CRPS']}, PICP 90%: {results['xgboost_quantile']['PICP_90']}%, ECE: {results['xgboost_quantile']['ECE']}")
+    results["xgboost_quantile"] = _eval_probabilistic(y_test_arr, xgb_q50, xgb_samples, xgb_q05, xgb_q95, ece_xgb)
+    print(f"  XGBoost  -> MAE: {results['xgboost_quantile']['MAE']} MW, CRPS: {results['xgboost_quantile']['CRPS']}, PICP 90%: {results['xgboost_quantile']['PICP_90']}%, ECE: {results['xgboost_quantile']['ECE']}")
 
     # 3. Prophet (Gaussian prediction intervals)
     print("Evaluating Prophet intervals...")
@@ -202,16 +197,8 @@ def run_calibration_suite(dataset_name: str, device: str = None) -> dict:
 
     ece_p, nom_p, emp_p = compute_ece_and_reliability(p_samples, y_test_arr)
     reliability_curves["Prophet (Gaussian)"] = (nom_p, emp_p)
-
-    point_p = compute_point_metrics(y_test_arr, p_pred)
-    results["prophet"] = {
-        **point_p,
-        "CRPS": round(compute_crps_empirical(p_samples, y_test_arr), 2),
-        "PICP_90": round(compute_picp(y_test_arr, p_q05, p_q95), 2),
-        "Width_90": round(compute_interval_width(p_q05, p_q95), 2),
-        "ECE": round(ece_p, 4),
-    }
-    print(f"  Prophet  -> MAE: {point_p['MAE']} MW, CRPS: {results['prophet']['CRPS']}, PICP 90%: {results['prophet']['PICP_90']}%, ECE: {results['prophet']['ECE']}")
+    results["prophet"] = _eval_probabilistic(y_test_arr, p_pred, p_samples, p_q05, p_q95, ece_p)
+    print(f"  Prophet  -> MAE: {results['prophet']['MAE']} MW, CRPS: {results['prophet']['CRPS']}, PICP 90%: {results['prophet']['PICP_90']}%, ECE: {results['prophet']['ECE']}")
 
     # 4. Chronos-T5-Small zero-shot samples
     print("Evaluating Chronos-T5-Small (512h context)...")
@@ -234,16 +221,8 @@ def run_calibration_suite(dataset_name: str, device: str = None) -> dict:
 
     ece_ch, nom_ch, emp_ch = compute_ece_and_reliability(ch_samples, test_raw_arr)
     reliability_curves["Chronos-T5-Small (Zero-Shot)"] = (nom_ch, emp_ch)
-
-    point_ch = compute_point_metrics(test_raw_arr, ch_pred)
-    results["chronos_small_512"] = {
-        **point_ch,
-        "CRPS": round(compute_crps_empirical(ch_samples, test_raw_arr), 2),
-        "PICP_90": round(compute_picp(test_raw_arr, ch_q05, ch_q95), 2),
-        "Width_90": round(compute_interval_width(ch_q05, ch_q95), 2),
-        "ECE": round(ece_ch, 4),
-    }
-    print(f"  Chronos  -> MAE: {point_ch['MAE']} MW, CRPS: {results['chronos_small_512']['CRPS']}, PICP 90%: {results['chronos_small_512']['PICP_90']}%, ECE: {results['chronos_small_512']['ECE']}")
+    results["chronos_small_512"] = _eval_probabilistic(test_raw_arr, ch_pred, ch_samples, ch_q05, ch_q95, ece_ch)
+    print(f"  Chronos  -> MAE: {results['chronos_small_512']['MAE']} MW, CRPS: {results['chronos_small_512']['CRPS']}, PICP 90%: {results['chronos_small_512']['PICP_90']}%, ECE: {results['chronos_small_512']['ECE']}")
 
     out_dir = RESULTS_DIR / dataset_name
     out_dir.mkdir(parents=True, exist_ok=True)

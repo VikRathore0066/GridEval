@@ -10,26 +10,13 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from prophet import Prophet
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 import xgboost as xgb
 
 from src.data_loader import load_dataset, split_dataset, get_target_col
 from src.features import prepare_features, get_feature_columns
+from src.evaluation import compute_point_metrics
 
 RESULTS_DIR = PROJECT_ROOT / "results"
-
-
-def compute_point_metrics(y_true, y_pred) -> dict:
-    y_true = np.asarray(y_true)
-    y_pred = np.asarray(y_pred)
-    mae = mean_absolute_error(y_true, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100.0
-    return {
-        "MAE": round(float(mae), 2),
-        "RMSE": round(float(rmse), 2),
-        "MAPE": round(float(mape), 2),
-    }
 
 
 def run_baselines_for_dataset(dataset_name: str) -> dict:

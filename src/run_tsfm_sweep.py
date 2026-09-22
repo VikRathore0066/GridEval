@@ -8,10 +8,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from src.data_loader import load_dataset, split_dataset, get_target_col
 from src.tsfm_models import load_chronos_pipeline, rolling_tsfm_evaluation
+from src.evaluation import compute_point_metrics, compute_picp, compute_interval_width
 
 RESULTS_DIR = PROJECT_ROOT / "results"
 CONTEXT_LENGTHS = [72, 168, 512, 1000]
@@ -53,22 +53,17 @@ def run_context_sweep_for_dataset(dataset_name: str, model_id: str = "amazon/chr
         q05 = res["q05"]
         q95 = res["q95"]
 
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100.0
-
-        coverage_90 = np.mean((y_true >= q05) & (y_true <= q95)) * 100.0
-        width_90 = np.mean(q95 - q05)
+        point = compute_point_metrics(y_true, y_pred)
+        coverage_90 = compute_picp(y_true, q05, q95)
+        width_90 = compute_interval_width(q05, q95)
 
         sweep_results[ctx] = {
-            "MAE": round(float(mae), 2),
-            "RMSE": round(float(rmse), 2),
-            "MAPE": round(float(mape), 2),
-            "Coverage_90": round(float(coverage_90), 2),
-            "Width_90": round(float(width_90), 2),
+            **point,
+            "Coverage_90": coverage_90,
+            "Width_90": width_90,
         }
 
-        print(f"  Context {ctx}h -> MAE: {mae:.2f} MW, MAPE: {mape:.2f}%, PICP 90%: {coverage_90:.1f}%, Width: {width_90:.2f} MW")
+        print(f"  Context {ctx}h -> MAE: {point['MAE']} MW, MAPE: {point['MAPE']}%, PICP 90%: {coverage_90}%, Width: {width_90} MW")
 
     out_dir = RESULTS_DIR / dataset_name
     out_dir.mkdir(parents=True, exist_ok=True)

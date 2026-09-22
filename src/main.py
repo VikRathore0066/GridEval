@@ -13,18 +13,26 @@ import yaml
 
 from src.utils import set_all_seeds
 from src.experiments import execute_experiment, RESULTS_DIR
-from src.pipelines import baselines, tsfm, calibration
+
+import importlib
 
 CONFIGS_DIR = PROJECT_ROOT / "configs"
 
-EXPERIMENT_REGISTRY = [
-    ("ercot_baselines", CONFIGS_DIR / "ercot_baselines.yaml", baselines.run),
-    ("gefcom_baselines", CONFIGS_DIR / "gefcom_baselines.yaml", baselines.run),
-    ("ercot_tsfm", CONFIGS_DIR / "ercot_tsfm.yaml", tsfm.run),
-    ("gefcom_tsfm", CONFIGS_DIR / "gefcom_tsfm.yaml", tsfm.run),
-    ("ercot_calibration", CONFIGS_DIR / "ercot_calibration.yaml", calibration.run),
-    ("gefcom_calibration", CONFIGS_DIR / "gefcom_calibration.yaml", calibration.run),
-]
+
+def get_pipeline_fn(pipeline_module_name: str):
+    mod = importlib.import_module(pipeline_module_name)
+    return mod.run
+
+
+def get_experiment_registry():
+    return [
+        ("ercot_baselines", CONFIGS_DIR / "ercot_baselines.yaml", "src.pipelines.baselines"),
+        ("gefcom_baselines", CONFIGS_DIR / "gefcom_baselines.yaml", "src.pipelines.baselines"),
+        ("ercot_tsfm", CONFIGS_DIR / "ercot_tsfm.yaml", "src.pipelines.tsfm"),
+        ("gefcom_tsfm", CONFIGS_DIR / "gefcom_tsfm.yaml", "src.pipelines.tsfm"),
+        ("ercot_calibration", CONFIGS_DIR / "ercot_calibration.yaml", "src.pipelines.calibration"),
+        ("gefcom_calibration", CONFIGS_DIR / "gefcom_calibration.yaml", "src.pipelines.calibration"),
+    ]
 
 
 def build_master_tables():
@@ -106,7 +114,7 @@ def main():
 
     set_all_seeds(42)
 
-    for name, config_file, pipeline_fn in EXPERIMENT_REGISTRY:
+    for name, config_file, pipeline_module_path in get_experiment_registry():
         if args.experiment and name != args.experiment:
             continue
 
@@ -128,6 +136,7 @@ def main():
         with open(cfg_path) as f:
             cfg = yaml.safe_load(f)
 
+        pipeline_fn = get_pipeline_fn(pipeline_module_path)
         execute_experiment(name, cfg, pipeline_fn)
 
     build_master_tables()

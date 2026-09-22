@@ -71,13 +71,9 @@ def launch_browser(url: str, delay: float = 1.0):
 
 
 def main():
-    print("==================================================================")
-    print("  LAUNCHING ENERGY LOAD PREDICTOR STREAMLIT DASHBOARD")
-    print("==================================================================")
-    print(f"URL: {URL}")
-    print("Starting Streamlit server and opening browser...\n")
+    print(f"Starting GridEval dashboard on {URL}...")
     
-    # Start browser opener in background thread
+    # Open browser on host system
     threading.Thread(target=launch_browser, args=(URL,), daemon=True).start()
     
     # Run Streamlit CLI inside current interpreter

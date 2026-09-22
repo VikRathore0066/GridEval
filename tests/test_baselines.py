@@ -7,7 +7,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import numpy as np
 import pytest
-from src.baselines import compute_point_metrics
+from src.evaluation import compute_point_metrics
 
 
 def test_compute_point_metrics_exact():

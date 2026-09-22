@@ -146,7 +146,7 @@ with tab_overview:
     
     view_scope = st.radio(
         "Display Scope",
-        ["Selected Grid Only (" + dataset_selection + ")", "Both Grids (Comprehensive Cross-Comparison)"],
+        ["Selected Grid Only (" + dataset_selection + ")", "Both Grids (ERCOT & GEFCom)"],
         horizontal=True,
     )
 

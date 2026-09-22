@@ -1,8 +1,6 @@
 # GridEval: Empirical Benchmarking of Classical ML vs Time Series Foundation Models
 
-GridEval is an empirical research and evaluation platform designed to systematically benchmark domain-trained classical machine learning models against pre-trained zero-shot Time Series Foundation Models (TSFMs) for electricity load forecasting.
-
-GridEval provides a standardized evaluation harness across independent power grid scales, coupled with an interactive live analytics and scenario simulation web dashboard.
+GridEval benchmarks domain-trained classical ML models against pre-trained zero-shot Time Series Foundation Models (TSFMs) for electricity load forecasting across two power grid scales (ERCOT and GEFCom 2017).
 
 ---
 
