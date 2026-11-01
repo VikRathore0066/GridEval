@@ -147,6 +147,31 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+The commands above install only the dashboard/runtime dependencies. To run
+the full experiments, install the training dependencies as well:
+
+```bash
+pip install -r requirements-train.txt
+```
+
+For Chronos inference on an NVIDIA GPU, install a CUDA-enabled PyTorch wheel
+that matches the machine's CUDA driver **before** installing the training
+requirements. For example, in Linux or WSL with a CUDA 12.1-compatible setup:
+
+```bash
+pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements-train.txt
+```
+
+The training manifest explicitly includes PyTorch, Transformers, and
+Accelerate. The GPU wheel is installed separately because the correct CUDA
+wheel depends on the host system; a normal `pip install torch` may install a
+CPU-only build. Verify GPU access before a long run with:
+
+```bash
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
+
 ### 2. Run Test Suite
 ```bash
 python -m unittest discover -s tests -p "test_*.py"
