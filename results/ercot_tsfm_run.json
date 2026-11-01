@@ -1,0 +1,54 @@
+{
+  "name": "ercot_tsfm",
+  "config": {
+    "experiment_name": "ercot_tsfm",
+    "dataset": "ercot",
+    "target_col": "load",
+    "model_id": "amazon/chronos-t5-small",
+    "tsfm": {
+      "context_lengths": [
+        72,
+        168,
+        512,
+        1000
+      ],
+      "horizon": 24,
+      "step": 24,
+      "num_samples": 50
+    }
+  },
+  "metrics": {
+    "72": {
+      "MAE": 2025.01,
+      "RMSE": 3063.53,
+      "MAPE": 3.83,
+      "Coverage_90": 84.29,
+      "Width_90": 8212.32
+    },
+    "168": {
+      "MAE": 1879.78,
+      "RMSE": 2930.12,
+      "MAPE": 3.54,
+      "Coverage_90": 83.33,
+      "Width_90": 6890.59
+    },
+    "512": {
+      "MAE": 1889.64,
+      "RMSE": 2927.29,
+      "MAPE": 3.56,
+      "Coverage_90": 81.08,
+      "Width_90": 6091.96
+    },
+    "1000": {
+      "MAE": 1885.18,
+      "RMSE": 2923.78,
+      "MAPE": 3.55,
+      "Coverage_90": 81.57,
+      "Width_90": 6093.6
+    }
+  },
+  "runtime_seconds": 3003.84,
+  "timestamp": "2026-11-01T21:05:55.221320",
+  "status": "SUCCESS",
+  "protocol_version": "shared-24-observation-v1"
+}

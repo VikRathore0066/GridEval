@@ -527,7 +527,12 @@ with tab_calibration:
 # TAB 4: TSFM CONTEXT LENGTH SCALING
 # -----------------------------------------------------------------------------
 with tab_tsfm:
-    st.subheader(f"TSFM Context Length Scaling Analysis (observations) - {dataset_key.upper()}")
+    st.subheader(f"Chronos-T5-Small Context Length Scaling - {dataset_key.upper()}")
+    st.caption(
+        "This sweep varies Chronos-T5-Small's historical context length. "
+        "LightGBM and XGBoost use the fixed lag and rolling-window feature set "
+        "reported in the baseline results; they are not part of this sweep."
+    )
 
     tsfm_sweep = all_results["tsfm"].get(dataset_key, {})
     if tsfm_sweep:

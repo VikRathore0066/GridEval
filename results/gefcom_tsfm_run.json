@@ -1,0 +1,54 @@
+{
+  "name": "gefcom_tsfm",
+  "config": {
+    "experiment_name": "gefcom_tsfm",
+    "dataset": "gefcom",
+    "target_col": "load",
+    "model_id": "amazon/chronos-t5-small",
+    "tsfm": {
+      "context_lengths": [
+        72,
+        168,
+        512,
+        1000
+      ],
+      "horizon": 24,
+      "step": 24,
+      "num_samples": 50
+    }
+  },
+  "metrics": {
+    "72": {
+      "MAE": 190.97,
+      "RMSE": 279.47,
+      "MAPE": 5.35,
+      "Coverage_90": 80.8,
+      "Width_90": 693.91
+    },
+    "168": {
+      "MAE": 160.27,
+      "RMSE": 243.12,
+      "MAPE": 4.43,
+      "Coverage_90": 82.92,
+      "Width_90": 558.35
+    },
+    "512": {
+      "MAE": 152.23,
+      "RMSE": 236.33,
+      "MAPE": 4.2,
+      "Coverage_90": 79.79,
+      "Width_90": 475.78
+    },
+    "1000": {
+      "MAE": 152.04,
+      "RMSE": 238.4,
+      "MAPE": 4.19,
+      "Coverage_90": 80.04,
+      "Width_90": 477.14
+    }
+  },
+  "runtime_seconds": 2234.34,
+  "timestamp": "2026-11-01T21:44:38.292776",
+  "status": "SUCCESS",
+  "protocol_version": "shared-24-observation-v1"
+}

@@ -36,10 +36,10 @@ A chronological split is applied across both grids to prevent temporal leakage:
 1. **Supervised GBDTs (Domain-Trained)**:
    - **Point Regression GBDTs**: LightGBM & XGBoost trained with squared error loss for point forecasts.
    - **Quantile GBDTs**: Separately trained LightGBM & XGBoost with pinball loss across an 11-quantile evaluation grid (alpha = 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95).
-   - **Features**: Autoregressive lags (t-1, t-2, t-3, t-24, t-168), rolling statistics (24h, 168h mean/std), calendar encodings, and holiday indicators (weather excluded by default via `include_weather=False`).
+   - **Features**: Autoregressive lags (1, 2, 3, 24, and 168 observations), rolling means and standard deviations over 24 and 168 observations, calendar encodings, and holiday indicators (weather excluded by default via `include_weather=False`).
 
 2. **Pre-Trained Foundation Models (Zero-Shot TSFM)**:
-   - **Amazon Chronos-T5-Small**: Evaluated zero-shot with a 512-observation context in the primary comparison. The separate context-length sweep outputs have not been regenerated under the corrected protocol.
+   - **Amazon Chronos-T5-Small**: Evaluated zero-shot with a 512-observation context in the primary comparison, and separately swept at 72, 168, 512, and 1,000 observations. The sweep uses the shared 24-observation horizon and step with 50 forecast samples. It is Chronos-only because Chronos takes context length as a direct input; the GBDTs use the fixed lag and rolling-window features described above.
 
 ---
 
@@ -93,7 +93,7 @@ The 90% interval uses the 5th and 95th percentile forecasts. No post-hoc interva
 - These results evaluate unadjusted forecast intervals; they do not show post-hoc calibration to 90%.
 - The default feature policy excludes weather. The results do not measure the effect of adding GEFCom weather features.
 - Each dataset uses a three-year training window, though earlier records are available. An expanded-history comparison has not been run.
-- The separate Chronos context-length sweep has not been regenerated under this shared evaluation protocol and is not used for these findings. Previous sweep outputs and obsolete run summaries were removed; no context-sweep results are shown as current findings until the sweep is rerun.
+- The Chronos-only context-length sensitivity results are saved in `results/ercot/tsfm_context_sweep.json` and `results/gefcom/tsfm_context_sweep.json`. They are a separate analysis and do not represent context-length sweeps for LightGBM or XGBoost.
 
 ## Dashboard Structure (`app.py`)
 
@@ -238,4 +238,4 @@ Both GBDT (LightGBM/XGBoost) and TSFM (Chronos) evaluation pipelines operate on 
 - **Horizon & Step**: Evaluated in blocks of **24 target observations** stepping by **24 observations**.
 - **Context Length**: Measured in observation steps (e.g. 72, 168, 512, 1000 observations).
 - **Dataset Gaps & Repeated Observations**: Due to dataset-specific timestamp gaps and repeated autumn DST fallback hours (represented via MultiIndex `(timestamp, occurrence)`), these 24-observation blocks represent sequential dataset records in chronological order. Because of temporal irregularities, observation counts do not guarantee strict wall-clock hourly intervals across all DST transitions.
-- **Fairness & Alignment**: Both model paths share the exact same ordered target identities and rolling evaluation origins derived from the canonical dataset splits, ensuring a consistent and reproducible comparison without data leakage. Primary baseline and calibration results are regenerated under this unified protocol. Context-length sweep artifacts remain pending regeneration.
+- **Fairness & Alignment**: Both model paths share the exact same ordered target identities and rolling evaluation origins derived from the canonical dataset splits, ensuring a consistent and reproducible comparison without data leakage. Primary baseline and calibration results are regenerated under this unified protocol. The additional Chronos context-length sweep uses the same 24-observation horizon and step and is stored separately for each dataset.
