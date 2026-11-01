@@ -1,3 +1,5 @@
+import pandas as pd
+from src.evaluation import compute_point_metrics, compute_picp, compute_interval_width, get_rolling_schedule
 import numpy as np
 import torch
 from chronos import ChronosPipeline
@@ -52,27 +54,40 @@ def rolling_tsfm_evaluation(
     step: int = 24,
     num_samples: int = 20,
     batch_size: int = 16,
+    test_index=None,
 ) -> dict:
     """Run rolling-window evaluation over test sequence in batches."""
     full_stream = np.concatenate([history_values, test_values])
     test_start_idx = len(history_values)
     total_len = len(full_stream)
 
+    if test_index is not None:
+        if len(test_index) != len(test_values):
+            raise ValueError(f"test_index length ({len(test_index)}) does not match test_values length ({len(test_values)}).")
+        if test_index.duplicated().any():
+            raise ValueError("test_index contains duplicate entries.")
+        if isinstance(test_index, pd.MultiIndex):
+            flat_test = list(test_index)
+            if flat_test != sorted(flat_test):
+                raise ValueError("test_index must be strictly sorted in chronological order.")
+        else:
+            if not test_index.is_monotonic_increasing:
+                raise ValueError("test_index must be strictly sorted in chronological order.")
+
+    schedule = get_rolling_schedule(test_index if test_index is not None else range(len(test_values)), horizon=horizon, step=step)
+
     window_contexts = []
     window_slices = []
-    curr_idx = test_start_idx
-
-    while curr_idx < total_len:
-        curr_horizon = min(horizon, total_len - curr_idx)
-        if curr_horizon <= 0:
-            break
+    for block in schedule:
+        origin_rel_idx = block["origin_idx"]
+        curr_idx = test_start_idx + origin_rel_idx
+        curr_horizon = len(block["target_indices"])
         context_start = max(0, curr_idx - context_len)
         context_window = full_stream[context_start:curr_idx]
         eval_slice = min(step, curr_horizon)
 
         window_contexts.append(context_window)
         window_slices.append((curr_idx, eval_slice, curr_horizon))
-        curr_idx += eval_slice
 
     preds_median = []
     actuals = []
@@ -116,10 +131,17 @@ def rolling_tsfm_evaluation(
             upper_90.extend(q95_i)
             all_sample_batches.append(s_i)
 
-    return {
+    res = {
         "y_pred": np.array(preds_median),
         "y_true": np.array(actuals),
         "q05": np.array(lower_90),
         "q95": np.array(upper_90),
         "samples": np.concatenate(all_sample_batches, axis=1),
     }
+    res["schedule"] = schedule
+    if test_index is not None:
+        evaluated_identities = []
+        for block in schedule:
+            evaluated_identities.extend(block["target_identities"])
+        res["test_identities"] = evaluated_identities
+    return res

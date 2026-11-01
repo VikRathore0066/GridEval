@@ -6,7 +6,6 @@
 # Model training & baselines
 lightgbm==4.5.0
 xgboost==2.1.1
-prophet==1.1.5
 
 # Time Series Foundation Models (TSFMs)
 chronos-forecasting>=1.3.0

@@ -5,11 +5,12 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 
 def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df["hour"] = df.index.hour
-    df["dayofweek"] = df.index.dayofweek
-    df["month"] = df.index.month
-    df["dayofyear"] = df.index.dayofyear
-    df["is_weekend"] = (df.index.dayofweek >= 5).astype(int)
+    idx = df.index.get_level_values(0) if isinstance(df.index, pd.MultiIndex) else df.index
+    df["hour"] = idx.hour
+    df["dayofweek"] = idx.dayofweek
+    df["month"] = idx.month
+    df["dayofyear"] = idx.dayofyear
+    df["is_weekend"] = (idx.dayofweek >= 5).astype(int)
 
     df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24.0)
     df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24.0)
@@ -39,12 +40,13 @@ def add_rolling_features(df: pd.DataFrame, target_col: str, windows=(24, 168)) -
 
 def add_holiday_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+    idx = df.index.get_level_values(0) if isinstance(df.index, pd.MultiIndex) else df.index
     cal = USFederalHolidayCalendar()
-    holidays = cal.holidays(start=df.index.min(), end=df.index.max())
-    df["is_holiday"] = df.index.normalize().isin(holidays).astype(int)
+    holidays = cal.holidays(start=idx.min(), end=idx.max())
+    df["is_holiday"] = idx.normalize().isin(holidays).astype(int)
 
     pre_holidays = holidays - pd.Timedelta(days=1)
-    df["is_pre_holiday"] = df.index.normalize().isin(pre_holidays).astype(int)
+    df["is_pre_holiday"] = idx.normalize().isin(pre_holidays).astype(int)
     return df
 
 
@@ -69,7 +71,7 @@ def prepare_features(df: pd.DataFrame, target_col: str, dataset_name: str) -> pd
     return df_feat.dropna()
 
 
-def get_feature_columns(dataset_name: str) -> list[str]:
+def get_feature_columns(dataset_name: str, include_weather: bool = False) -> list[str]:
     base_features = [
         "hour", "dayofweek", "month", "dayofyear", "is_weekend",
         "hour_sin", "hour_cos", "month_sin", "month_cos",
@@ -77,6 +79,6 @@ def get_feature_columns(dataset_name: str) -> list[str]:
         "rolling_mean_24", "rolling_std_24", "rolling_mean_168", "rolling_std_168",
         "is_holiday", "is_pre_holiday"
     ]
-    if dataset_name == "gefcom":
+    if dataset_name == "gefcom" and include_weather:
         base_features += ["drybulb", "dewpoint", "temp_squared", "dewpoint_depression"]
     return base_features

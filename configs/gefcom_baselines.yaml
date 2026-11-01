@@ -26,6 +26,3 @@ models:
     learning_rate: 0.03
     max_depth: 6
     early_stopping_rounds: 50
-  prophet:
-    seasonality_mode: "additive"
-    changepoint_prior_scale: 0.05

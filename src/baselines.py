@@ -6,20 +6,127 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import lightgbm as lgb
+# import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from prophet import Prophet
-import xgboost as xgb
+# import xgboost as xgb
 
 from src.data_loader import load_dataset, split_dataset, get_target_col
 from src.features import prepare_features, get_feature_columns
-from src.evaluation import compute_point_metrics
+from src.evaluation import compute_point_metrics, get_rolling_schedule
 
-RESULTS_DIR = PROJECT_ROOT / "results"
+import os
+ENV_RESULTS = os.environ.get("GRIDEVAL_RESULTS_DIR", None)
+RESULTS_DIR = Path(ENV_RESULTS) if ENV_RESULTS else (PROJECT_ROOT / "results")
+
+
+def rolling_block_evaluation(
+    model,
+    X_train,
+    y_train,
+    X_val,
+    y_val,
+    full_df,
+    target_col,
+    feature_cols,
+    test_index,
+    horizon: int = 24,
+    step: int = 24
+):
+    """
+    Evaluate GBDTs in 24-observation block rolling forecast mode.
+
+    Forecast Schedule & Policy:
+    - Horizon: 24 observation steps per forecast block
+    - Step: 24 observation steps between forecast origins
+    - Refitting Policy: Single fit on training split with early stopping on validation split.
+    - Recursive Lag & Rolling Update: Uses prior model predictions for future target values within the forecast horizon, preventing future-target leakage.
+    - Strict Chronological Identity Validation: Uses shared get_rolling_schedule to ensure 1:1 identity alignment.
+    """
+    if test_index.duplicated().any():
+        raise ValueError("test_index contains duplicate entries.")
+
+    if isinstance(test_index, pd.MultiIndex):
+        flat_test = list(test_index)
+        if flat_test != sorted(flat_test):
+            raise ValueError("test_index must be strictly sorted in chronological order.")
+    else:
+        if not test_index.is_monotonic_increasing:
+            raise ValueError("test_index must be strictly sorted in chronological order.")
+
+    eval_set = [(X_val, y_val)]
+    estimator_module = model.__class__.__module__.split(".", 1)[0]
+    if estimator_module == "lightgbm":
+        import lightgbm as lgb
+
+        model.fit(
+            X_train,
+            y_train,
+            eval_set=eval_set,
+            callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)],
+        )
+    else:
+        model.fit(X_train, y_train, eval_set=eval_set, verbose=False)
+
+    # Forecasts are generated one identity at a time because recursive lag
+    # features depend on the preceding prediction. Avoid spawning a thread pool
+    # for every single-row prediction after the model has finished fitting.
+    get_params = getattr(model, "get_params", None)
+    set_params = getattr(model, "set_params", None)
+    if get_params is not None and set_params is not None and "n_jobs" in get_params(deep=False):
+        set_params(n_jobs=1)
+
+    schedule = get_rolling_schedule(test_index, horizon=horizon, step=step)
+
+    preds = []
+    actuals = []
+    evaluated_identities = []
+    current_df = full_df.copy()
+
+    for block in schedule:
+        # Reset current_df target values up to origin to actual full_df values,
+        # ensuring newly available actuals between blocks are fully incorporated without carrying forward past prediction errors.
+        origin_ident = block["origin_identity"]
+        origin_idx = full_df.index.get_loc(origin_ident)
+        # Reset all history prior to origin_idx to actuals from full_df
+        current_df.iloc[:origin_idx, current_df.columns.get_loc(target_col)] = full_df[target_col].iloc[:origin_idx]
+
+        for idx_in_test, target_ident in enumerate(block["target_identities"]):
+            if target_ident not in full_df.index:
+                raise KeyError(f"Test identity {target_ident} not found in full dataset index.")
+            target_idx = full_df.index.get_loc(target_ident)
+
+            row = current_df.iloc[[target_idx]].copy()
+
+            for lag in [1, 2, 3, 24, 168]:
+                if target_idx - lag >= 0:
+                    row[f"lag_{lag}"] = current_df[target_col].iloc[target_idx - lag]
+
+            for w in [24, 168]:
+                if target_idx - 1 >= 0:
+                    hist = current_df[target_col].iloc[max(0, target_idx - w):target_idx]
+                    row[f"rolling_mean_{w}"] = hist.mean()
+                    row[f"rolling_std_{w}"] = hist.std()
+
+            X_row = row[feature_cols]
+            pred = model.predict(X_row)[0]
+
+            current_df.loc[current_df.index[target_idx], target_col] = pred
+            preds.append(pred)
+            actuals.append(full_df[target_col].iloc[target_idx])
+            evaluated_identities.append(target_ident)
+
+    return {
+        "y_pred": np.array(preds),
+        "y_true": np.array(actuals),
+        "test_identities": evaluated_identities,
+        "schedule": schedule
+    }
 
 
 def run_baselines_for_dataset(dataset_name: str) -> dict:
+    import lightgbm as lgb
+    import xgboost as xgb
     print(f"\nRunning baseline models for {dataset_name.upper()}...")
 
     df = load_dataset(dataset_name)
@@ -40,8 +147,8 @@ def run_baselines_for_dataset(dataset_name: str) -> dict:
 
     results = {}
 
-    # LightGBM
-    print("Fitting LightGBM regressor...")
+    # LightGBM with 24h rolling block evaluation
+    print("Fitting LightGBM regressor and running 24h rolling block evaluation...")
     model_lgb = lgb.LGBMRegressor(
         n_estimators=1000,
         learning_rate=0.03,
@@ -54,18 +161,20 @@ def run_baselines_for_dataset(dataset_name: str) -> dict:
         random_state=42,
         n_jobs=-1,
     )
-    model_lgb.fit(
-        X_train,
-        y_train,
-        eval_set=[(X_val, y_val)],
-        callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)],
+    res_lgb = rolling_block_evaluation(
+        model_lgb, X_train, y_train, X_val, y_val, df_feat, target_col, feature_cols, y_test.index, horizon=24, step=24
     )
-    pred_lgb = model_lgb.predict(X_test)
-    results["lightgbm"] = compute_point_metrics(y_test, pred_lgb)
+    pred_lgb = res_lgb["y_pred"]
+
+    test_len = len(y_test)
+    if len(pred_lgb) != test_len:
+        raise ValueError(f"LightGBM prediction length {len(pred_lgb)} does not match test set length {test_len}.")
+
+    results["lightgbm"] = compute_point_metrics(y_test.values, pred_lgb)
     print(f"  LightGBM -> MAE: {results['lightgbm']['MAE']} MW, MAPE: {results['lightgbm']['MAPE']}%")
 
-    # XGBoost
-    print("Fitting XGBoost regressor...")
+    # XGBoost with 24h rolling block evaluation
+    print("Fitting XGBoost regressor and running 24h rolling block evaluation...")
     model_xgb = xgb.XGBRegressor(
         n_estimators=1000,
         learning_rate=0.03,
@@ -78,44 +187,32 @@ def run_baselines_for_dataset(dataset_name: str) -> dict:
         n_jobs=-1,
         early_stopping_rounds=50,
     )
-    model_xgb.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
-    pred_xgb = model_xgb.predict(X_test)
-    results["xgboost"] = compute_point_metrics(y_test, pred_xgb)
-    print(f"  XGBoost  -> MAE: {results['xgboost']['MAE']} MW, MAPE: {results['xgboost']['MAPE']}%")
-
-    # Prophet with additive components
-    print("Fitting Prophet...")
-    df_prophet_train = pd.DataFrame({"ds": train.index, "y": train[target_col].values})
-    model_prophet = Prophet(
-        yearly_seasonality=True,
-        weekly_seasonality=True,
-        daily_seasonality=True,
-        seasonality_mode="additive",
-        changepoint_prior_scale=0.05,
+    res_xgb = rolling_block_evaluation(
+        model_xgb, X_train, y_train, X_val, y_val, df_feat, target_col, feature_cols, y_test.index, horizon=24, step=24
     )
-    model_prophet.fit(df_prophet_train)
+    pred_xgb = res_xgb["y_pred"]
+    if len(pred_xgb) != test_len:
+        raise ValueError(f"XGBoost prediction length {len(pred_xgb)} does not match test set length {test_len}.")
 
-    df_test_ds = pd.DataFrame({"ds": test.index})
-    forecast = model_prophet.predict(df_test_ds)
-    pred_prophet = forecast["yhat"].values
-    results["prophet"] = compute_point_metrics(y_test.values, pred_prophet)
-    print(f"  Prophet  -> MAE: {results['prophet']['MAE']} MW, MAPE: {results['prophet']['MAPE']}%")
-
-    # Naive seasonal persistence (1-week lag)
-    print("Computing naive seasonal baseline (1-week lag)...")
-    combined_vals = np.concatenate([val[target_col].values[-168:], test[target_col].values])
-    naive_pred = combined_vals[:-168]
-    results["naive_seasonal_1wk"] = compute_point_metrics(test[target_col].values, naive_pred)
-    print(f"  Naive    -> MAE: {results['naive_seasonal_1wk']['MAE']} MW, MAPE: {results['naive_seasonal_1wk']['MAPE']}%")
+    results["xgboost"] = compute_point_metrics(y_test.values, pred_xgb)
+    print(f"  XGBoost  -> MAE: {results['xgboost']['MAE']} MW, MAPE: {results['xgboost']['MAPE']}%")
 
     out_dir = RESULTS_DIR / dataset_name
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "baselines.json"
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
+
+    # Save timestamp-level predictions for dashboard & audit aligned to y_test.index
+    df_preds = pd.DataFrame({
+        "actual": y_test.values,
+        "lightgbm": pred_lgb,
+        "xgboost": pred_xgb
+    }, index=y_test.index)
+    df_preds.to_csv(out_dir / "predictions_baselines.csv")
+    print(f"\nSaved baseline predictions to {out_dir / 'predictions_baselines.csv'}")
     print(f"\nSaved baseline metrics to {out_path}")
 
-    # Display clean summary table in terminal
     df_res = pd.DataFrame([
         {"Model": m, "MAE (MW)": vals["MAE"], "RMSE (MW)": vals["RMSE"], "MAPE (%)": vals["MAPE"]}
         for m, vals in results.items()
@@ -127,5 +224,4 @@ def run_baselines_for_dataset(dataset_name: str) -> dict:
 
 
 if __name__ == "__main__":
-    run_baselines_for_dataset("ercot")
-    run_baselines_for_dataset("gefcom")
+    pass

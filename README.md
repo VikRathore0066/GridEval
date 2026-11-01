@@ -1,6 +1,6 @@
-# GridEval: Empirical Benchmarking of Classical ML vs Time Series Foundation Models
+# GridEval: Empirical Benchmarking of Classical GBDTs and Time-Series Foundation Models
 
-GridEval benchmarks domain-trained classical ML models against pre-trained zero-shot Time Series Foundation Models (TSFMs) for electricity load forecasting across two power grid scales (ERCOT and GEFCom 2017).
+GridEval benchmarks domain-trained point-regression and quantile GBDTs against pre-trained zero-shot Time Series Foundation Models (TSFMs) for hourly load forecasting across ERCOT and GEFCom 2017.
 
 **Live Dashboard**: [https://grideval-5x6uktiqevdmtugeqgxm6l.streamlit.app/](https://grideval-5x6uktiqevdmtugeqgxm6l.streamlit.app/)
 
@@ -8,38 +8,38 @@ GridEval benchmarks domain-trained classical ML models against pre-trained zero-
 
 ## Datasets & Split Protocol
 
-The benchmark evaluates models across two power grids:
+The benchmark evaluates models across two power grid scales and regions:
 
 1. **ERCOT (Texas Interconnection)**:
    - Macro-scale power grid (~70,000 MW peak demand).
    - Hourly electricity demand spanning 2020 to 2024 (~43,800 timestamps).
-   - High industrial load growth and renewable penetration.
 
 2. **GEFCom 2017 (ISO-NE Connecticut Zone)**:
    - Regional-scale power grid (~4,000 MW peak demand).
    - Hourly electricity demand paired with drybulb and dewpoint temperature data (2012 to 2016).
-   - Non-linear temperature-load relationship (summer cooling, winter heating).
 
-### Data Split Protocol
-A chronological 3-1-1 split is applied across both grids to prevent temporal leakage:
-- **Train**: 3 years (26,280 hours)
-- **Validation**: 1 year (8,760 hours)
-- **Test**: 1 year (8,760 hours)
+### Data Split Protocol & Measured Observation Counts
+A chronological split is applied across both grids to prevent temporal leakage:
+- **ERCOT**:
+  - Train: 26,304 observations (2020-01-01–2022-12-31)
+  - Validation: 8,760 observations (2023-01-01–2023-12-31)
+  - Test: 8,784 observations (2024-01-01–2024-12-31)
+- **GEFCom**:
+  - Train: 26,298 observations (2012-01-01–2014-12-31)
+  - Validation: 8,758 observations (2015-01-01–2015-12-31)
+  - Test: 8,782 observations (2016-01-01–2016-12-31)
 
 ---
 
 ## Evaluated Models
 
 1. **Supervised GBDTs (Domain-Trained)**:
-   - LightGBM & XGBoost with quantile loss (alpha = 0.05, 0.50, 0.95).
-   - Features: Autoregressive lags (t-1, t-2, t-3, t-24, t-168), rolling statistics (24h, 168h mean/std), calendar encodings, holiday indicators, and temperature interactions (temperature squared, dewpoint depression).
+   - **Point Regression GBDTs**: LightGBM & XGBoost trained with squared error loss for point forecasts.
+   - **Quantile GBDTs**: Separately trained LightGBM & XGBoost with pinball loss across an 11-quantile evaluation grid (alpha = 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95).
+   - **Features**: Autoregressive lags (t-1, t-2, t-3, t-24, t-168), rolling statistics (24h, 168h mean/std), calendar encodings, and holiday indicators (weather excluded by default via `include_weather=False`).
 
-2. **Classical & Heuristic Baselines**:
-   - Prophet: Additive model with weekly/yearly Fourier seasonality and holiday effects.
-   - Naive Seasonal: 168-hour persistence baseline (t = t-168).
-
-3. **Pre-Trained Foundation Models (Zero-Shot TSFM)**:
-   - Amazon Chronos-T5 (Small): Evaluated zero-shot without fine-tuning across context window sweeps from 72h to 1,000h.
+2. **Pre-Trained Foundation Models (Zero-Shot TSFM)**:
+   - **Amazon Chronos-T5-Small**: Evaluated zero-shot with a 512-observation context in the primary comparison. The separate context-length sweep outputs have not been regenerated under the corrected protocol.
 
 ---
 
@@ -51,58 +51,49 @@ A chronological 3-1-1 split is applied across both grids to prevent temporal lea
 - **MAPE**: Mean Absolute Percentage Error (%)
 
 ### Probabilistic Calibration & Uncertainty
-- **CRPS**: Continuous Ranked Probability Score (distributional sharpness and calibration)
+- **CRPS**: Continuous Ranked Probability Score (probability-weighted quantile loss integral for GBDTs, empirical sample score for Chronos)
 - **PICP (90%)**: Prediction Interval Coverage Probability (nominal target: 90.0%)
 - **MPIW (90%)**: Mean Prediction Interval Width (sharpness in MW)
-- **ECE**: Expected Calibration Error across all quantile levels (0.05 to 0.95)
+- **Quantile Calibration Error**: Mean absolute deviation across tested quantile levels (0.05 to 0.95)
 
 ---
 
-## Empirical Benchmark Results
+## Regenerated Benchmark Results
 
-### 1. Point Forecasting Performance (Test Year)
+The tables below use the latest baseline and calibration runs on the canonical 2024 ERCOT and 2016 GEFCom test splits. All three models use the same 24-observation rolling forecast origins and target identities. GBDT forecasts update lag history recursively within each block; Chronos forecasts each block from information available at its origin. The GBDT point-regression and quantile models are separately trained.
 
-| Grid | Model | Type | MAE (MW) | RMSE (MW) | MAPE (%) |
-|---|---|---|---|---|---|
-| **ERCOT** | LightGBM | Classical ML | 505.53 | 798.08 | **0.90%** |
-| **ERCOT** | XGBoost | Classical ML | 506.45 | 825.49 | 0.90% |
-| **ERCOT** | Chronos-T5-Small (512h) | Zero-Shot TSFM | 1921.32 | 2976.93 | 3.61% |
-| **ERCOT** | Naive Seasonal (168h) | Baseline | 4478.53 | 6274.29 | 8.38% |
-| **ERCOT** | Prophet | Classical ML | 5304.77 | 6935.90 | 9.75% |
-| **GEFCom** | XGBoost | Classical ML | 32.67 | 44.39 | **0.96%** |
-| **GEFCom** | LightGBM | Classical ML | 32.73 | 44.67 | 0.96% |
-| **GEFCom** | Chronos-T5-Small (512h) | Zero-Shot TSFM | 154.85 | 239.50 | 4.28% |
-| **GEFCom** | Naive Seasonal (168h) | Baseline | 343.37 | 491.25 | 9.69% |
-| **GEFCom** | Prophet | Classical ML | 586.37 | 736.84 | 16.80% |
+### Point Forecast Accuracy
 
-### 2. Probabilistic Calibration Performance (Nominal 90% Intervals)
+| Grid | Model | MAE (MW) | RMSE (MW) | MAPE (%) |
+|---|---|---:|---:|---:|
+| ERCOT | LightGBM | 2,337.55 | 3,560.92 | 4.34 |
+| ERCOT | XGBoost | 2,270.14 | 3,383.25 | 4.17 |
+| ERCOT | Chronos-T5-Small (zero-shot) | 1,907.38 | 2,947.31 | 3.59 |
+| GEFCom | LightGBM | 157.27 | 227.31 | 4.39 |
+| GEFCom | XGBoost | 157.73 | 229.21 | 4.33 |
+| GEFCom | Chronos-T5-Small (zero-shot) | 155.35 | 241.23 | 4.29 |
 
-| Grid | Model | CRPS | PICP 90% (Target: 90%) | Width 90% (MW) | ECE |
-|---|---|---|---|---|---|
-| **ERCOT** | LightGBM Quantile | **827.49** | 88.11% | 5,863 MW | 0.0898 |
-| **ERCOT** | XGBoost Quantile | 854.69 | **88.63%** | 6,328 MW | 0.0926 |
-| **ERCOT** | Chronos-T5-Small (512h) | 1429.61 | 77.39% (Under-covered) | 5,679 MW | **0.0490** |
-| **ERCOT** | Prophet | 4522.44 | 94.71% (Over-wide) | 39,697 MW | 0.0742 |
-| **GEFCom** | LightGBM Quantile | **50.43** | **87.80%** | 337 MW | 0.0540 |
-| **GEFCom** | XGBoost Quantile | 55.40 | 86.92% | 394 MW | **0.0482** |
-| **GEFCom** | Chronos-T5-Small (512h) | 114.37 | 74.87% (Under-covered) | 437 MW | 0.0501 |
-| **GEFCom** | Prophet | 467.30 | 94.51% (Over-wide) | 3,964 MW | 0.2018 |
+### Probabilistic Forecast Evaluation
 
----
+The 90% interval uses the 5th and 95th percentile forecasts. No post-hoc interval correction was applied; PICP reports how often actual load fell inside these intervals. Lower CRPS and ECE are better, while PICP is compared with the nominal 90% target.
 
-## Key Findings
+| Grid | Model | CRPS (MW) | PICP 90% (%) | Mean Width (MW) | ECE |
+|---|---|---:|---:|---:|---:|
+| ERCOT | LightGBM Quantile | 2,493.91 | 68.72 | 11,180.74 | 0.1837 |
+| ERCOT | XGBoost Quantile | 2,587.26 | 67.04 | 11,472.15 | 0.1811 |
+| ERCOT | Chronos-T5-Small | 1,429.74 | 77.02 | 5,654.04 | 0.0492 |
+| GEFCom | LightGBM Quantile | 176.47 | 60.73 | 684.32 | 0.1242 |
+| GEFCom | XGBoost Quantile | 183.53 | 61.06 | 706.67 | 0.1195 |
+| GEFCom | Chronos-T5-Small | 116.07 | 75.55 | 441.10 | 0.0522 |
 
-1. **GBDTs outperform Zero-Shot TSFMs on point accuracy**:
-   - Feature-engineered LightGBM and XGBoost achieve ~0.90% to 0.96% MAPE across both grids, outperforming zero-shot Chronos-T5 (~3.61% to 4.28% MAPE). Domain-specific lag features and calendar interactions remain critical inductive biases for electrical grid demand.
+### Findings and Limits
 
-2. **Zero-shot TSFMs exhibit interval under-coverage**:
-   - Chronos-T5 achieves ~74.8% to 77.4% empirical coverage for nominal 90% prediction intervals, indicating overconfidence during peak and regime shifts.
-   - Quantile GBDTs provide well-calibrated intervals (~86.9% to 88.6% PICP) without excessive interval inflation.
-
-3. **Context window scaling reaches a plateau at 512 hours**:
-   - Extending Chronos context length from 72h to 512h yields noticeable error reduction. Beyond 512h (720h, 1,000h), accuracy gains plateau while inference latency scales linearly.
-
----
+- Chronos has the lowest MAE on both test sets. Its GEFCom MAE advantage is small, and its GEFCom RMSE is higher than both GBDTs.
+- Chronos has lower CRPS and ECE than the quantile GBDTs on both datasets, but its nominal 90% intervals cover only 77.02% of ERCOT and 75.55% of GEFCom observations. The GBDT intervals cover fewer observations. None of the models meets the 90% coverage target.
+- These results evaluate unadjusted forecast intervals; they do not show post-hoc calibration to 90%.
+- The default feature policy excludes weather. The results do not measure the effect of adding GEFCom weather features.
+- Each dataset uses a three-year training window, though earlier records are available. An expanded-history comparison has not been run.
+- The separate Chronos context-length sweep artifacts have not been regenerated under this shared evaluation protocol and are not used for these findings.
 
 ## Dashboard Structure (`app.py`)
 
@@ -111,7 +102,7 @@ The Streamlit dashboard contains 5 analysis tabs:
 1. **Leaderboard & Cross-Grid Comparison**: Side-by-side metric tables for point accuracy and calibration across ERCOT and GEFCom.
 2. **Forecast Trajectories & Interval Visualizer**: Interactive Plotly time-series showing median predictions (P50), actual load, and 90% uncertainty bands across seasonal regimes (Heatwave, Cold Snap, Shoulder, Full Year).
 3. **Calibration & Reliability Analysis**: Empirical vs nominal quantile curves evaluating model coverage and ECE.
-4. **Context Length Scaling Analysis**: TSFM accuracy, coverage, and latency sensitivity curves across 72h to 1,000h context lengths.
+4. **Context Length Scaling Analysis**: TSFM accuracy, coverage, and latency sensitivity curves across 72-observation to 1,000-observation context lengths.
 5. **Interactive Scenario Simulator**: Real-time stress-testing engine with temperature shock (+/-25 deg F) and structural demand growth (+/-25%) sliders, computing peak demand (MW), integrated energy (GWh), and spinning reserve requirements.
 
 ---
@@ -135,7 +126,7 @@ GridEval/
 |   |-- evaluation.py       # Vectorized accuracy, CRPS, PICP, and ECE routines
 |   |-- data_loader.py      # Chronological split validation and data ingestion
 |   |-- run_calibration.py  # Probabilistic calibration benchmarking suite
-|   |-- run_tsfm_sweep.py   # Context length sweep (72h to 1000h)
+|   |-- run_tsfm_sweep.py   # Context length sweep (72-observation to 1000 observations)
 |   |-- baseline_summary.py # Terminal summary printer
 |   `-- main.py             # Orchestration and table compilation
 |-- tests/              # Unit and integration test suite
@@ -158,7 +149,7 @@ pip install -r requirements.txt
 
 ### 2. Run Test Suite
 ```bash
-pytest tests/
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
 ### 3. Compile or Run Benchmarks
@@ -181,3 +172,41 @@ Or directly with Streamlit:
 ```bash
 streamlit run app.py
 ```
+
+## Data Ingestion & Canonical Workflow
+
+### ERCOT Ingestion & Provenance
+To ingest raw ERCOT annual CSV files into the canonical processed dataset with full provenance tracking (source file, row number, global source order, and timestamp/occurrence multi-index):
+```bash
+python3 ingest_ercot.py
+```
+- **Canonical Output Path**: `data/processed/ercot_clean.parquet`
+- **Split Indices**: `data/processed/ercot_train_idx.parquet`, `ercot_val_idx.parquet`, `ercot_test_idx.parquet`
+- **Missing-Row Audit Log**: `results/ercot_missing_audit.json`
+- **Timestamp & Occurrence Semantics**: Raw hourly records are parsed chronologically. Autumn DST fallback hours (`02:00:00`) appearing twice are indexed using a MultiIndex `(timestamp, occurrence)` where `occurrence` (0 or 1) preserves distinct source observations and source order without arbitrary minute offsets or unverified timezone labels.
+- **Missing-Row Policy**: The completely empty row at `2016-11-07 00:00:00` (source row 7463 in `2016_ercot_hourly_load_data.csv`) is retained in the raw-derived artifact and logged in `results/ercot_missing_audit.json`, while being transparently excluded from target-based training/evaluation (`load_dataset`).
+
+### Running Tests
+To run the focused test suite (including ingestion provenance, audit logging, feature preparation, split membership, and exact-identity evaluation alignment):
+```bash
+PYTHONPATH=. python3 tests/test_ingest.py
+PYTHONPATH=. python3 tests/test_baselines.py
+```
+
+
+### Dataset Splits & Measured Observation Counts
+- **ERCOT**:
+  - Train: 26,304 observations (2020-01-01–2022-12-31)
+  - Validation: 8,760 observations (2023-01-01–2023-12-31)
+  - Test: 8,784 observations (2024-01-01–2024-12-31)
+- **GEFCom**:
+  - Train: 26,298 observations (2012-01-01–2014-12-31)
+  - Validation: 8,758 observations (2015-01-01–2015-12-31)
+  - Test: 8,782 observations (2016-01-01–2016-12-31)
+
+### Forecast Contract & Evaluation Protocol
+Both GBDT (LightGBM/XGBoost) and TSFM (Chronos) evaluation pipelines operate on an **observation-wise rolling evaluation protocol**:
+- **Horizon & Step**: Evaluated in blocks of **24 target observations** stepping by **24 observations**.
+- **Context Length**: Measured in observation steps (e.g. 72, 168, 512, 1000 observations).
+- **Dataset Gaps & Repeated Observations**: Due to dataset-specific timestamp gaps and repeated autumn DST fallback hours (represented via MultiIndex `(timestamp, occurrence)`), these 24-observation blocks represent sequential dataset records in chronological order. Because of temporal irregularities, observation counts do not guarantee strict wall-clock hourly intervals across all DST transitions.
+- **Fairness & Alignment**: Both model paths share the exact same ordered target identities and rolling evaluation origins derived from the canonical dataset splits, ensuring a consistent and reproducible comparison without data leakage. Primary baseline and calibration results are regenerated under this unified protocol. Context-length sweep artifacts remain pending regeneration.

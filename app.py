@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -32,7 +33,7 @@ st.title("GridEval")
 st.caption("Empirical Benchmarking of Classical ML Baselines vs Time Series Foundation Models (Accuracy and Calibration)")
 
 BASE_DIR = Path(__file__).resolve().parent
-RESULTS_DIR = BASE_DIR / "results"
+RESULTS_DIR = Path(os.environ.get("GRIDEVAL_RESULTS_DIR", BASE_DIR / "results"))
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 PLOTS_DIR = RESULTS_DIR / "plots"
 
@@ -68,10 +69,16 @@ def load_grid_load_data(dataset_key: str):
         return None
     df = pd.read_parquet(path, columns=["load"])
     bounds = DATE_BOUNDS[dataset_key]
-    return df.loc[bounds["start"]:bounds["end"]]
+
+    # Handle MultiIndex (timestamp, occurrence) explicitly for ERCOT
+    if isinstance(df.index, pd.MultiIndex):
+        ts_level = df.index.get_level_values("timestamp")
+        mask = (ts_level >= bounds["start"]) & (ts_level <= bounds["end"])
+        return df.loc[mask]
+    else:
+        return df.loc[bounds["start"]:bounds["end"]]
 
 
-@st.cache_data
 def load_results_data():
     results = {"baselines": {}, "tsfm": {}, "calibration": {}}
     for ds in ["ercot", "gefcom"]:
@@ -92,12 +99,165 @@ def load_results_data():
     return results
 
 
-@st.cache_data
 def load_csv_table(filename: str):
     path = RESULTS_DIR / filename
     if path.exists():
         return pd.read_csv(path)
     return None
+
+
+def filter_comparison_models(table: pd.DataFrame) -> pd.DataFrame:
+    """Show only the three model families in the paper comparison."""
+    if table is None or table.empty or "Model" not in table.columns:
+        return table
+    model_names = table["Model"].astype(str).str.casefold()
+    keep = model_names.str.contains(r"lightgbm|xgboost|chronos", regex=True)
+    return table.loc[keep].copy()
+
+
+def load_prediction_csv(csv_path: Path, dataset_key: str) -> pd.DataFrame:
+    """Load prediction CSV, reconstructing ERCOT MultiIndex (timestamp, occurrence) or GEFCom DatetimeIndex correctly."""
+    df_raw = pd.read_csv(csv_path)
+    if dataset_key == "ercot" and "timestamp" in df_raw.columns and "occurrence" in df_raw.columns:
+        df_raw["timestamp"] = pd.to_datetime(df_raw["timestamp"])
+        df_raw = df_raw.set_index(["timestamp", "occurrence"])
+    elif dataset_key == "ercot" and "Unnamed: 0" in df_raw.columns and "Unnamed: 1" in df_raw.columns:
+        df_raw = df_raw.rename(columns={"Unnamed: 0": "timestamp", "Unnamed: 1": "occurrence"})
+        df_raw["timestamp"] = pd.to_datetime(df_raw["timestamp"])
+        df_raw = df_raw.set_index(["timestamp", "occurrence"])
+    else:
+        idx_col = df_raw.columns[0]
+        df_raw[idx_col] = pd.to_datetime(df_raw[idx_col])
+        df_raw = df_raw.set_index(idx_col)
+    return df_raw
+
+
+def verify_prediction_alignment(df_pred: pd.DataFrame, dataset_key: str, start_dt: pd.Timestamp, end_dt: pd.Timestamp):
+    """Verify exact ordered identities and row ordering align with expected test-split subset identities for the window, preserving ERCOT (timestamp, occurrence)."""
+    if df_pred is None or df_pred.empty:
+        raise ValueError("Prediction DataFrame is empty or None.")
+
+    if df_pred.index.duplicated().any():
+        raise ValueError("Prediction index contains duplicate keys.")
+
+    if not df_pred.index.is_monotonic_increasing:
+        raise ValueError("Prediction index is not monotonic increasing.")
+
+    from src.data_loader import load_dataset, split_dataset
+    df_full = load_dataset(dataset_key)
+    _, _, test_split = split_dataset(df_full, dataset_key)
+    if test_split is not None and not test_split.empty:
+        if dataset_key == "ercot" and isinstance(test_split.index, pd.MultiIndex):
+            ts_vals = test_split.index.get_level_values("timestamp")
+            mask_test = (ts_vals >= start_dt) & (ts_vals <= end_dt)
+            expected_subset = test_split.loc[mask_test]
+
+            # Filter df_pred to the window as well (dashboard loads full CSV and filters to window)
+            ts_pred = df_pred.index.get_level_values("timestamp")
+            mask_pred = (ts_pred >= start_dt) & (ts_pred <= end_dt)
+            df_pred_window = df_pred.loc[mask_pred]
+
+            expected_list = list(expected_subset.index)
+            pred_list = list(df_pred_window.index)
+            if len(pred_list) != len(expected_list) or pred_list != expected_list:
+                expected_set = set(expected_list)
+                pred_set = set(pred_list)
+                if not pred_set.issubset(expected_set) or not expected_set.issubset(pred_set):
+                    raise ValueError("Prediction index contains missing or extra identities relative to expected window.")
+                if pred_list != expected_list:
+                    raise ValueError("Prediction index is reordered relative to expected window.")
+            if "actual" in df_pred_window.columns:
+                canonical_actuals = df_full.loc[df_pred_window.index, "load"]
+                if not np.allclose(df_pred_window["actual"].values, canonical_actuals.values, equal_nan=True):
+                    raise ValueError("Prediction actual values do not match canonical dataset values.")
+        else:
+            if not isinstance(test_split.index, pd.DatetimeIndex):
+                test_split.index = pd.to_datetime(test_split.index)
+            mask_test = (test_split.index >= start_dt) & (test_split.index <= end_dt)
+            expected_subset = test_split.loc[mask_test]
+
+            if not isinstance(df_pred.index, pd.DatetimeIndex):
+                df_pred.index = pd.to_datetime(df_pred.index)
+            mask_pred = (df_pred.index >= start_dt) & (df_pred.index <= end_dt)
+            df_pred_window = df_pred.loc[mask_pred]
+
+            expected_list = list(expected_subset.index)
+            pred_list = [pd.to_datetime(idx) for idx in df_pred_window.index]
+            expected_list_dt = [pd.to_datetime(idx) for idx in expected_list]
+            if len(pred_list) != len(expected_list_dt) or pred_list != expected_list_dt:
+                expected_set = set(expected_list_dt)
+                pred_set = set(pred_list)
+                if not pred_set.issubset(expected_set) or not expected_set.issubset(pred_set):
+                    raise ValueError("Prediction index contains missing or extra identities relative to expected window.")
+                if pred_list != expected_list_dt:
+                    raise ValueError("Prediction index is reordered relative to expected window.")
+            if "actual" in df_pred_window.columns:
+                canonical_actuals = df_full.loc[df_pred_window.index, "load"]
+                if not np.allclose(df_pred_window["actual"].values, canonical_actuals.values, equal_nan=True):
+                    raise ValueError("Prediction actual values do not match canonical dataset values.")
+
+    return True
+
+
+def load_forecast_window(dataset_key: str, model_key: str, start_dt: pd.Timestamp, end_dt: pd.Timestamp):
+    """Load a saved forecast only when its identities match the current test split."""
+    model_name = model_key.casefold()
+    if "lightgbm" in model_name:
+        quantile_path = RESULTS_DIR / dataset_key / "predictions_quantile_lightgbm.csv"
+        model_column = "lightgbm"
+        quantile_columns = ("lightgbm_q05", "lightgbm_median", "lightgbm_q95")
+    elif "xgboost" in model_name:
+        quantile_path = RESULTS_DIR / dataset_key / "predictions_quantile_xgboost.csv"
+        model_column = "xgboost"
+        quantile_columns = ("xgboost_q05", "xgboost_median", "xgboost_q95")
+    else:
+        quantile_path = RESULTS_DIR / dataset_key / "predictions_quantile_chronos.csv"
+        model_column = "chronos"
+        quantile_columns = ("chronos_q05", "chronos_median", "chronos_q95")
+
+    if quantile_path.exists():
+        predictions = load_prediction_csv(quantile_path, dataset_key)
+        verify_prediction_alignment(predictions, dataset_key, start_dt, end_dt)
+        missing = [column for column in ("actual", *quantile_columns) if column not in predictions.columns]
+        if missing:
+            raise ValueError(f"Saved quantile forecast is missing columns: {', '.join(missing)}")
+        quantile = True
+        low_col, median_col, high_col = quantile_columns
+    else:
+        if "chronos" in model_name:
+            raise FileNotFoundError("Chronos prediction output has not been generated for this dataset.")
+        point_path = RESULTS_DIR / dataset_key / "predictions_baselines.csv"
+        if not point_path.exists():
+            raise FileNotFoundError("Saved baseline predictions have not been generated for this dataset.")
+        predictions = load_prediction_csv(point_path, dataset_key)
+        verify_prediction_alignment(predictions, dataset_key, start_dt, end_dt)
+        missing = [column for column in ("actual", model_column) if column not in predictions.columns]
+        if missing:
+            raise ValueError(f"Saved point forecast is missing columns: {', '.join(missing)}")
+        quantile = False
+
+    if isinstance(predictions.index, pd.MultiIndex):
+        timestamps = predictions.index.get_level_values("timestamp")
+        mask = (timestamps >= start_dt) & (timestamps <= end_dt)
+    else:
+        mask = (predictions.index >= start_dt) & (predictions.index <= end_dt)
+    selected = predictions.loc[mask]
+    if selected.empty:
+        raise ValueError("No saved forecasts match the selected date window.")
+
+    if quantile:
+        low, median, high = (selected[column].to_numpy() for column in quantile_columns)
+    else:
+        low = high = None
+        median = selected[model_column].to_numpy()
+    return {
+        "index": selected.index,
+        "actual": selected["actual"].to_numpy(),
+        "median": median,
+        "lower": low,
+        "upper": high,
+        "has_quantiles": quantile,
+    }
 
 
 all_results = load_results_data()
@@ -114,18 +274,20 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Exports")
 master_acc_path = RESULTS_DIR / "master_table.csv"
 if master_acc_path.exists():
+    accuracy_download = filter_comparison_models(load_csv_table("master_table.csv"))
     st.sidebar.download_button(
         label="Download Accuracy CSV",
-        data=master_acc_path.read_text(),
+        data=accuracy_download.to_csv(index=False),
         file_name="master_accuracy_table.csv",
         mime="text/csv",
     )
 
 master_cal_path = RESULTS_DIR / "calibration_master.csv"
 if master_cal_path.exists():
+    calibration_download = filter_comparison_models(load_csv_table("calibration_master.csv"))
     st.sidebar.download_button(
         label="Download Calibration CSV",
-        data=master_cal_path.read_text(),
+        data=calibration_download.to_csv(index=False),
         file_name="master_calibration_table.csv",
         mime="text/csv",
     )
@@ -135,7 +297,7 @@ tab_overview, tab_forecast, tab_calibration, tab_tsfm, tab_simulator = st.tabs([
     "Forecast Trajectories",
     "Calibration & Reliability",
     "Context Length Scaling",
-    "Live Scenario Simulator",
+    "Illustrative Scenario",
 ])
 
 # -----------------------------------------------------------------------------
@@ -143,36 +305,21 @@ tab_overview, tab_forecast, tab_calibration, tab_tsfm, tab_simulator = st.tabs([
 # -----------------------------------------------------------------------------
 with tab_overview:
     st.subheader("Model Leaderboard & Cross-Dataset Comparison")
-    
+
     view_scope = st.radio(
         "Display Scope",
         ["Selected Grid Only (" + dataset_selection + ")", "Both Grids (ERCOT & GEFCom)"],
         horizontal=True,
     )
 
-    col_best1, col_best2 = st.columns(2)
-    with col_best1:
-        st.markdown("""
-        <div class="metric-card">
-            <strong>Top Point Accuracy Model:</strong> LightGBM / XGBoost<br>
-            <span style="font-size: 0.9em; color: #475569;">
-            Achieves ~0.90% to 0.96% MAPE with tabular lag and calendar features.
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
-    with col_best2:
-        st.markdown("""
-        <div class="metric-card">
-            <strong>Top Uncertainty Calibration:</strong> Quantile GBDTs<br>
-            <span style="font-size: 0.9em; color: #475569;">
-            Achieves ~87% to 88% empirical coverage for a 90% target interval with sharp interval width.
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
+    st.caption(
+        "Saved tables update when the benchmark experiments are rerun under the current evaluation setup."
+    )
 
     st.markdown("#### Point Accuracy Metrics")
     df_acc = load_csv_table("master_table.csv")
     if df_acc is not None:
+        df_acc = filter_comparison_models(df_acc)
         if "Selected Grid Only" in view_scope:
             df_acc = df_acc[df_acc["Dataset"] == dataset_key.upper()]
         st.dataframe(df_acc, use_container_width=True, hide_index=True)
@@ -182,6 +329,7 @@ with tab_overview:
     st.markdown("#### Probabilistic Calibration Metrics")
     df_cal = load_csv_table("calibration_master.csv")
     if df_cal is not None:
+        df_cal = filter_comparison_models(df_cal)
         if "Selected Grid Only" in view_scope:
             df_cal = df_cal[df_cal["Dataset"] == dataset_key.upper()]
         st.dataframe(df_cal, use_container_width=True, hide_index=True)
@@ -201,14 +349,12 @@ with tab_forecast:
             [
                 "LightGBM (Quantile Regression)",
                 "XGBoost (Quantile Regression)",
-                "Prophet (Gaussian)",
                 "Chronos-T5-Small (Zero-Shot TSFM)",
             ],
         )
         model_key_map = {
             "LightGBM (Quantile Regression)": "lightgbm_quantile",
             "XGBoost (Quantile Regression)": "xgboost_quantile",
-            "Prophet (Gaussian)": "prophet",
             "Chronos-T5-Small (Zero-Shot TSFM)": "chronos_small_512",
         }
         model_key = model_key_map[model_selection]
@@ -241,82 +387,87 @@ with tab_forecast:
     df_test_load = load_grid_load_data(dataset_key)
 
     if df_test_load is not None and not df_test_load.empty:
-        mask = (df_test_load.index >= start_dt) & (df_test_load.index <= end_dt)
-        df_slice = df_test_load.loc[mask]
+        if isinstance(df_test_load.index, pd.MultiIndex):
+            ts_lvl = df_test_load.index.get_level_values("timestamp")
+            mask = (ts_lvl >= start_dt) & (ts_lvl <= end_dt)
+            df_slice = df_test_load.loc[mask]
+        else:
+            mask = (df_test_load.index >= start_dt) & (df_test_load.index <= end_dt)
+            df_slice = df_test_load.loc[mask]
 
         if len(df_slice) > 0:
-            actuals_full = df_slice["load"].values
-            timestamps_full = df_slice.index
-
-            # Fast downsampling for large spans (> 1,000 hours) to prevent browser WebGL lag
-            step = max(1, len(df_slice) // 1000)
-            df_plot = df_slice.iloc[::step]
-            actuals = df_plot["load"].values
-            timestamps = df_plot.index
-
-            np.random.seed(42)
-            if "lightgbm" in model_key or "xgboost" in model_key:
-                err_scale = actuals.mean() * 0.015
-                pred_median = actuals + np.random.normal(0, err_scale * 0.4, len(actuals))
-                q05 = pred_median - 1.645 * err_scale
-                q95 = pred_median + 1.645 * err_scale
-            elif "prophet" in model_key:
-                err_scale = actuals.mean() * 0.08
-                pred_median = actuals + np.random.normal(0, err_scale * 0.7, len(actuals))
-                q05 = pred_median - 1.8 * err_scale
-                q95 = pred_median + 1.8 * err_scale
+            try:
+                forecast = load_forecast_window(dataset_key, model_key, start_dt, end_dt)
+            except (OSError, ValueError, KeyError) as exc:
+                st.info(
+                    "No compatible saved forecast is available for this test split. "
+                    f"{exc} Rerun the baseline and calibration experiments to create aligned forecasts. "
+                    "The other dashboard tabs remain available."
+                )
             else:
-                err_scale = actuals.mean() * 0.05
-                pred_median = actuals + np.random.normal(0, err_scale * 0.6, len(actuals))
-                q05 = pred_median - 1.25 * err_scale
-                q95 = pred_median + 1.25 * err_scale
+                timestamps = forecast["index"]
+                plot_x = (
+                    timestamps.get_level_values("timestamp")
+                    if isinstance(timestamps, pd.MultiIndex)
+                    else timestamps
+                )
+                actuals = forecast["actual"]
+                pred_median = forecast["median"]
+                has_quantiles = forecast["has_quantiles"]
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=timestamps, y=q95,
-                mode="lines", line=dict(width=0), showlegend=False,
-                name="90% Upper Bound",
-            ))
-            fig.add_trace(go.Scatter(
-                x=timestamps, y=q05,
-                fill="tonexty", mode="lines", line=dict(width=0),
-                fillcolor="rgba(37, 99, 235, 0.15)",
-                name="90% Prediction Interval",
-            ))
-            fig.add_trace(go.Scatter(
-                x=timestamps, y=pred_median,
-                mode="lines", line=dict(color="#2563eb", width=2.2),
-                name="Forecast Median",
-            ))
-            fig.add_trace(go.Scatter(
-                x=timestamps, y=actuals,
-                mode="lines+markers" if len(df_slice) <= 168 else "lines",
-                line=dict(color="#dc2626", width=1.5),
-                marker=dict(size=4),
-                name="Observed Actual Load",
-            ))
+                fig = go.Figure()
+                if has_quantiles:
+                    fig.add_trace(go.Scatter(
+                        x=plot_x, y=forecast["upper"],
+                        mode="lines", line=dict(width=0), showlegend=False,
+                        name="90% Upper Bound",
+                    ))
+                    fig.add_trace(go.Scatter(
+                        x=plot_x, y=forecast["lower"],
+                        fill="tonexty", mode="lines", line=dict(width=0),
+                        fillcolor="rgba(37, 99, 235, 0.15)",
+                        name="90% Prediction Interval",
+                    ))
+                fig.add_trace(go.Scatter(
+                    x=plot_x, y=pred_median,
+                    mode="lines", line=dict(color="#2563eb", width=2.2),
+                    name="Forecast Median",
+                ))
+                fig.add_trace(go.Scatter(
+                    x=plot_x, y=actuals,
+                    mode="lines+markers" if len(actuals) <= 168 else "lines",
+                    line=dict(color="#dc2626", width=1.5),
+                    marker=dict(size=4),
+                    name="Observed Actual Load",
+                ))
 
-            fig.update_layout(
-                template="plotly_white",
-                height=420,
-                xaxis_title="Timestamp",
-                yaxis_title="Grid Load (MW)",
-                hovermode="x unified",
-                legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"),
-                margin=dict(l=40, r=40, t=30, b=40),
-            )
-            st.plotly_chart(fig, use_container_width=True)
+                fig.update_layout(
+                    template="plotly_white",
+                    height=420,
+                    xaxis_title="Timestamp",
+                    yaxis_title="Grid Load (MW)",
+                    hovermode="x unified",
+                    legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"),
+                    margin=dict(l=40, r=40, t=30, b=40),
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-            c1, c2, c3, c4 = st.columns(4)
-            mae_val = np.mean(np.abs(actuals_full - (actuals_full + np.random.normal(0, actuals_full.mean() * 0.015 * 0.4, len(actuals_full)))))
-            mape_val = 0.90 if ("lightgbm" in model_key or "xgboost" in model_key) else (9.75 if "prophet" in model_key else 3.61)
-            coverage_val = 88.2 if ("lightgbm" in model_key or "xgboost" in model_key) else (94.1 if "prophet" in model_key else 75.4)
-            width_val = np.mean(q95 - q05)
-
-            c1.metric("Window MAE", f"{mae_val:.1f} MW")
-            c2.metric("Window MAPE", f"{mape_val:.2f}%")
-            c3.metric("90% Interval Coverage (PICP)", f"{coverage_val:.1f}%", delta=f"{coverage_val - 90.0:.1f}% vs 90% target")
-            c4.metric("Avg Interval Width", f"{width_val:.1f} MW")
+                mae_val = np.mean(np.abs(actuals - pred_median))
+                safe_actuals = np.where(actuals == 0, np.nan, actuals)
+                mape_val = np.nanmean(np.abs((actuals - pred_median) / safe_actuals)) * 100.0
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Window MAE", f"{mae_val:.1f} MW")
+                c2.metric("Window MAPE", f"{mape_val:.2f}%")
+                if has_quantiles:
+                    coverage = np.mean(
+                        (actuals >= forecast["lower"]) & (actuals <= forecast["upper"])
+                    ) * 100.0
+                    width = np.mean(forecast["upper"] - forecast["lower"])
+                    c3.metric("90% Interval Coverage (PICP)", f"{coverage:.1f}%", delta=f"{coverage - 90.0:.1f}% vs 90% target")
+                    c4.metric("Avg Interval Width", f"{width:.1f} MW")
+                else:
+                    c3.metric("90% Interval Coverage (PICP)", "Not available")
+                    c4.metric("Avg Interval Width", "Not available")
         else:
             st.warning("Selected date range has no matching data in test split.")
     else:
@@ -328,20 +479,37 @@ with tab_forecast:
 with tab_calibration:
     st.subheader(f"Uncertainty Calibration & Reliability Curves ({dataset_key.upper()})")
 
+    cal_dict = all_results["calibration"].get(dataset_key, {})
+    removed_curve_models = [
+        name for name in cal_dict
+        if not any(model in name.casefold() for model in ("lightgbm", "xgboost", "chronos"))
+    ]
     col_rel1, col_rel2 = st.columns([1.2, 1])
     with col_rel1:
         img_path = PLOTS_DIR / f"reliability_{dataset_key}.png"
-        if img_path.exists():
+        if removed_curve_models:
+            if img_path.exists():
+                st.info(
+                    "This saved reliability chart includes a model outside the current comparison. "
+                    "Rerun calibration with the same results folder as this dashboard to replace it."
+                )
+            else:
+                st.info(
+                    "The old reliability chart was removed because it included a model outside the current comparison. "
+                    "Run calibration to create a new chart for the current models."
+                )
+        elif img_path.exists():
             st.image(str(img_path), caption=f"Empirical vs Nominal Quantile Reliability ({dataset_key.upper()})", use_container_width=True)
         else:
             st.info(f"Reliability diagram not found at {img_path}. Run python src/run_calibration.py to generate it.")
 
     with col_rel2:
         st.markdown("#### Calibration Summary Table")
-        cal_dict = all_results["calibration"].get(dataset_key, {})
         if cal_dict:
             cal_rows = []
             for m_name, m_metrics in cal_dict.items():
+                if not any(model in m_name.casefold() for model in ("lightgbm", "xgboost", "chronos")):
+                    continue
                 cal_rows.append({
                     "Model": m_name.replace("_", " ").title(),
                     "CRPS": m_metrics.get("CRPS", "N/A"),
@@ -353,36 +521,31 @@ with tab_calibration:
         else:
             st.info("Run python src/run_calibration.py to populate metrics.")
 
-        st.markdown("""
-        **Interpretation:**
-        - **Quantile GBDTs (LightGBM/XGBoost):** Well-calibrated (~87%–88% coverage on nominal 90% intervals) with narrow interval width.
-        - **Chronos-T5 Zero-Shot:** Under-covers (~75%–77% coverage) due to uncalibrated sample variance on out-of-distribution grid scales.
-        - **Prophet Gaussian:** Over-covers (~94% coverage) with excessively wide intervals.
-        """)
+        st.caption("Calibration values are read from the saved calibration files.")
 
 # -----------------------------------------------------------------------------
 # TAB 4: TSFM CONTEXT LENGTH SCALING
 # -----------------------------------------------------------------------------
 with tab_tsfm:
-    st.subheader(f"TSFM Context Length Scaling Analysis (72h to 1000h) - {dataset_key.upper()}")
+    st.subheader(f"TSFM Context Length Scaling Analysis (observations) - {dataset_key.upper()}")
 
     tsfm_sweep = all_results["tsfm"].get(dataset_key, {})
     if tsfm_sweep:
         sweep_df = pd.DataFrame([
-            {"Context Length (Hours)": int(k), **v} for k, v in tsfm_sweep.items()
-        ]).sort_values("Context Length (Hours)")
+            {"Context Length (Observations)": int(k), **v} for k, v in tsfm_sweep.items()
+        ]).sort_values("Context Length (Observations)")
 
         col_sw1, col_sw2 = st.columns(2)
         with col_sw1:
             fig_mae = go.Figure()
             fig_mae.add_trace(go.Scatter(
-                x=sweep_df["Context Length (Hours)"], y=sweep_df["MAE"],
+                x=sweep_df["Context Length (Observations)"], y=sweep_df["MAE"],
                 mode="lines+markers", line=dict(color="#2563eb", width=2.5),
                 marker=dict(size=8), name="MAE (MW)",
             ))
             fig_mae.update_layout(
                 title="Point Accuracy (MAE) vs Context Length",
-                xaxis_title="Context Length (Hours)",
+                xaxis_title="Context Length (Observations)",
                 yaxis_title="MAE (MW)",
                 template="plotly_white",
                 height=320,
@@ -392,7 +555,7 @@ with tab_tsfm:
         with col_sw2:
             fig_cov = go.Figure()
             fig_cov.add_trace(go.Scatter(
-                x=sweep_df["Context Length (Hours)"], y=sweep_df["Coverage_90"],
+                x=sweep_df["Context Length (Observations)"], y=sweep_df["Coverage_90"],
                 mode="lines+markers", line=dict(color="#dc2626", width=2.5),
                 marker=dict(size=8), name="Empirical 90% Coverage",
             ))
@@ -403,7 +566,7 @@ with tab_tsfm:
             ))
             fig_cov.update_layout(
                 title="90% Prediction Interval Coverage vs Context Length",
-                xaxis_title="Context Length (Hours)",
+                xaxis_title="Context Length (Observations)",
                 yaxis_title="Empirical Coverage (%)",
                 template="plotly_white",
                 height=320,
@@ -419,8 +582,8 @@ with tab_tsfm:
 # TAB 5: INTERACTIVE LIVE FORECASTING & SCENARIO SIMULATOR
 # -----------------------------------------------------------------------------
 with tab_simulator:
-    st.subheader(f"Interactive Live Forecasting & Scenario Simulator ({dataset_key.upper()})")
-    st.caption("Simulate real-time grid dispatch forecasts under customized weather shocks, industrial demand shifts, and model uncertainty bands.")
+    st.subheader(f"Illustrative Scenario Simulator ({dataset_key.upper()})")
+    st.info("Note: This scenario simulator is an illustrative analytical calculation (stress-testing historical load profiles with parametric temperature and demand shocks), not an operational model forecast or reserve requirement.")
 
     col_sim_cfg, col_sim_stress = st.columns([1, 1])
 
@@ -499,22 +662,30 @@ with tab_simulator:
 
     df_grid_full = load_grid_load_data(dataset_key)
     if df_grid_full is not None and not df_grid_full.empty:
+        # Handle index extraction for context and future slice
+        if isinstance(df_grid_full.index, pd.MultiIndex):
+            ts_full = df_grid_full.index.get_level_values("timestamp")
+        else:
+            ts_full = df_grid_full.index
+
         ctx_start = start_sim_dt - pd.Timedelta(hours=24)
-        ctx_mask = (df_grid_full.index >= ctx_start) & (df_grid_full.index < start_sim_dt)
+        ctx_mask = (ts_full >= ctx_start) & (ts_full < start_sim_dt)
         df_ctx = df_grid_full.loc[ctx_mask]
 
         future_timestamps = pd.date_range(start=start_sim_dt, periods=sim_horizon_hours, freq="h")
 
-        base_slice_mask = (df_grid_full.index >= start_sim_dt) & (df_grid_full.index < start_sim_dt + pd.Timedelta(hours=sim_horizon_hours))
+        base_slice_mask = (ts_full >= start_sim_dt) & (ts_full < start_sim_dt + pd.Timedelta(hours=sim_horizon_hours))
         df_future_base = df_grid_full.loc[base_slice_mask]
 
         if len(df_future_base) == sim_horizon_hours:
             base_curve = df_future_base["load"].values.astype(float)
+            baseline_label = "Observed Historical Future Reference"
         else:
             mean_level = df_grid_full["load"].mean()
             std_level = df_grid_full["load"].std()
             h_idx = np.array([ts.hour for ts in future_timestamps])
             base_curve = mean_level + std_level * 0.5 * np.sin(2 * np.pi * (h_idx - 6) / 24.0)
+            baseline_label = "Synthetic Seasonal Reference Baseline"
 
         weather_factor = 1.0
         if temp_shock > 0:
@@ -547,7 +718,8 @@ with tab_simulator:
 
         if len(df_ctx) > 0:
             fig_sim.add_trace(go.Scatter(
-                x=df_ctx.index, y=df_ctx["load"],
+                x=df_ctx.index.get_level_values("timestamp") if isinstance(df_ctx.index, pd.MultiIndex) else df_ctx.index,
+                y=df_ctx["load"],
                 mode="lines", line=dict(color="#64748b", width=2),
                 name="Preceding 24h Actual Load",
             ))
@@ -561,13 +733,13 @@ with tab_simulator:
             x=future_timestamps, y=p05,
             fill="tonexty", mode="lines", line=dict(width=0),
             fillcolor="rgba(37, 99, 235, 0.15)",
-            name="90% Reserve / Uncertainty Band",
+            name="Illustrative Parametric Uncertainty Band (Scenario Model - Formula Generated)",
         ))
 
         fig_sim.add_trace(go.Scatter(
             x=future_timestamps, y=baseline_p50,
             mode="lines", line=dict(color="#94a3b8", width=1.8, dash="dot"),
-            name="Baseline Forecast (Unstressed)",
+            name=baseline_label,
         ))
 
         fig_sim.add_trace(go.Scatter(
@@ -575,14 +747,14 @@ with tab_simulator:
             mode="lines+markers" if sim_horizon_hours <= 48 else "lines",
             line=dict(color="#2563eb", width=2.6),
             marker=dict(size=4),
-            name="Simulated Scenario Forecast (P50)",
+            name="Simulated Scenario Forecast P50 (Formula-Generated)",
         ))
 
         if "Comparison" in sim_model:
             fig_sim.add_trace(go.Scatter(
                 x=future_timestamps, y=chronos_sim,
                 mode="lines", line=dict(color="#f59e0b", width=2.2, dash="dash"),
-                name="Chronos-T5 Zero-Shot Median",
+                name="Illustrative Formula-Generated Comparison Curve",
             ))
 
         peak_threshold = np.max(simulated_p50)

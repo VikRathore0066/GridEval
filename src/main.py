@@ -57,7 +57,7 @@ def build_master_tables():
                 m512 = t_data.get("512") or t_data.get(512)
                 acc_rows.append({
                     "Dataset": ds.upper(),
-                    "Model": "Chronos-T5-Small (512h)",
+                    "Model": "Chronos-T5-Small (512-observations)",
                     "Type": "Zero-Shot TSFM",
                     "MAE": m512["MAE"],
                     "RMSE": m512["RMSE"],

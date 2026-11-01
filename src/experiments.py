@@ -6,7 +6,9 @@ import time
 import traceback
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RESULTS_DIR = PROJECT_ROOT / "results"
+import os
+ENV_RESULTS = os.environ.get("GRIDEVAL_RESULTS_DIR", None)
+RESULTS_DIR = Path(ENV_RESULTS) if ENV_RESULTS else (PROJECT_ROOT / "results")
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 

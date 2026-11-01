@@ -1,5 +1,6 @@
 # Python & Virtual Environments
 .venv/
+.venv_test/
 venv/
 env/
 ENV/
