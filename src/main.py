@@ -12,7 +12,7 @@ import pandas as pd
 import yaml
 
 from src.utils import set_all_seeds
-from src.experiments import execute_experiment, RESULTS_DIR
+from src.experiments import execute_experiment, RESULTS_DIR, RUN_PROTOCOL_VERSION
 
 import importlib
 
@@ -49,19 +49,21 @@ def build_master_tables():
             for m, vals in b_data.items():
                 acc_rows.append({"Dataset": ds.upper(), "Model": m, "Type": "Classical", **vals})
 
-        t_path = RESULTS_DIR / ds / "tsfm_context_sweep.json"
-        if t_path.exists():
-            with open(t_path) as f:
-                t_data = json.load(f)
-            if "512" in t_data or 512 in t_data:
-                m512 = t_data.get("512") or t_data.get(512)
+        # Use the current shared-protocol Chronos calibration run for point
+        # metrics. The separate context sweep may be historical or incomplete.
+        c_path = RESULTS_DIR / ds / "calibration.json"
+        if c_path.exists():
+            with open(c_path) as f:
+                c_data = json.load(f)
+            chronos = c_data.get("chronos_small_512", {})
+            if all(key in chronos for key in ("MAE", "RMSE", "MAPE")):
                 acc_rows.append({
                     "Dataset": ds.upper(),
                     "Model": "Chronos-T5-Small (512-observations)",
                     "Type": "Zero-Shot TSFM",
-                    "MAE": m512["MAE"],
-                    "RMSE": m512["RMSE"],
-                    "MAPE": m512["MAPE"],
+                    "MAE": chronos["MAE"],
+                    "RMSE": chronos["RMSE"],
+                    "MAPE": chronos["MAPE"],
                 })
 
     if acc_rows:
@@ -118,23 +120,29 @@ def main():
         if args.experiment and name != args.experiment:
             continue
 
-        run_file = RESULTS_DIR / f"{name}_run.json"
-        if args.skip_existing and run_file.exists():
-            try:
-                with open(run_file) as f:
-                    r_data = json.load(f)
-                if r_data.get("status") == "SUCCESS":
-                    print(f"Skipping completed experiment: {name}")
-                    continue
-            except Exception:
-                pass
-
         cfg_path = Path(config_file)
         if not cfg_path.exists():
             print(f"Warning: config not found: {cfg_path}. Skipping.")
             continue
         with open(cfg_path) as f:
             cfg = yaml.safe_load(f)
+
+        run_file = RESULTS_DIR / f"{name}_run.json"
+        if args.skip_existing and run_file.exists():
+            try:
+                with open(run_file) as f:
+                    r_data = json.load(f)
+                is_current = (
+                    r_data.get("status") == "SUCCESS"
+                    and r_data.get("protocol_version") == RUN_PROTOCOL_VERSION
+                    and r_data.get("config") == cfg
+                )
+                if is_current:
+                    print(f"Skipping completed current-protocol experiment: {name}")
+                    continue
+                print(f"Re-running stale or incompatible result: {name}")
+            except (OSError, json.JSONDecodeError):
+                print(f"Re-running experiment with unreadable result metadata: {name}")
 
         pipeline_fn = get_pipeline_fn(pipeline_module_path)
         execute_experiment(name, cfg, pipeline_fn)

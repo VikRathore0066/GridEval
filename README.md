@@ -93,7 +93,7 @@ The 90% interval uses the 5th and 95th percentile forecasts. No post-hoc interva
 - These results evaluate unadjusted forecast intervals; they do not show post-hoc calibration to 90%.
 - The default feature policy excludes weather. The results do not measure the effect of adding GEFCom weather features.
 - Each dataset uses a three-year training window, though earlier records are available. An expanded-history comparison has not been run.
-- The separate Chronos context-length sweep artifacts have not been regenerated under this shared evaluation protocol and are not used for these findings.
+- The separate Chronos context-length sweep has not been regenerated under this shared evaluation protocol and is not used for these findings. Older sweep outputs and September 2026 run summaries are retained under `results/archive/legacy_pre_shared_protocol/` for provenance; they are excluded from current dashboard findings and experiment skip decisions.
 
 ## Dashboard Structure (`app.py`)
 
@@ -116,8 +116,9 @@ GridEval/
 |-- data/processed/     # Cleaned and split Parquet files
 |-- notebooks/          # Exploratory Data Analysis (EDA)
 |-- results/            # Benchmark outputs (master_table.csv, calibration_master.csv)
-|   |-- ercot/          # ERCOT JSON metrics and runs
-|   |-- gefcom/         # GEFCom JSON metrics and runs
+|   |-- ercot/          # Active ERCOT metrics and aligned forecasts
+|   |-- gefcom/         # Active GEFCom metrics and aligned forecasts
+|   |-- archive/        # Superseded pre-protocol result files, retained for provenance
 |   `-- plots/          # Reliability and calibration plots
 |-- src/                # Modular benchmark codebase
 |   |-- baselines.py        # GBDT and heuristic baseline models
@@ -132,8 +133,9 @@ GridEval/
 |-- tests/              # Unit and integration test suite
 |-- app.py              # Streamlit evaluation and scenario dashboard
 |-- run_dashboard.py    # Local launcher script
-|-- requirements.txt    # Fast-deploy dependency manifest
-`-- pyproject.toml      # Build metadata and development configuration
+|-- requirements.txt    # Pinned dashboard dependencies
+|-- requirements-train.txt # Pinned experiment and notebook dependencies
+`-- pyproject.toml      # Core package metadata and optional dependency groups
 ```
 
 ---
@@ -141,14 +143,17 @@ GridEval/
 ## Quick Start
 
 ### 1. Environment Setup
+Use Python 3.10, 3.11, or 3.12 for the pinned training environment.
+
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-The commands above install only the dashboard/runtime dependencies. To run
-the full experiments, install the training dependencies as well:
+The dashboard manifest pins its direct dependencies. To run the full
+experiments and edit the notebooks, install the training and notebook
+dependencies as well:
 
 ```bash
 pip install -r requirements-train.txt

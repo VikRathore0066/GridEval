@@ -322,7 +322,7 @@ with tab_overview:
         df_acc = filter_comparison_models(df_acc)
         if "Selected Grid Only" in view_scope:
             df_acc = df_acc[df_acc["Dataset"] == dataset_key.upper()]
-        st.dataframe(df_acc, use_container_width=True, hide_index=True)
+        st.dataframe(df_acc, width="stretch", hide_index=True)
     else:
         st.info("Run python src/main.py to generate master_table.csv.")
 
@@ -332,7 +332,7 @@ with tab_overview:
         df_cal = filter_comparison_models(df_cal)
         if "Selected Grid Only" in view_scope:
             df_cal = df_cal[df_cal["Dataset"] == dataset_key.upper()]
-        st.dataframe(df_cal, use_container_width=True, hide_index=True)
+        st.dataframe(df_cal, width="stretch", hide_index=True)
     else:
         st.info("Run python src/main.py to generate calibration_master.csv.")
 
@@ -450,7 +450,7 @@ with tab_forecast:
                     legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"),
                     margin=dict(l=40, r=40, t=30, b=40),
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
                 mae_val = np.mean(np.abs(actuals - pred_median))
                 safe_actuals = np.where(actuals == 0, np.nan, actuals)
@@ -499,7 +499,7 @@ with tab_calibration:
                     "Run calibration to create a new chart for the current models."
                 )
         elif img_path.exists():
-            st.image(str(img_path), caption=f"Empirical vs Nominal Quantile Reliability ({dataset_key.upper()})", use_container_width=True)
+            st.image(str(img_path), caption=f"Empirical vs Nominal Quantile Reliability ({dataset_key.upper()})", width="stretch")
         else:
             st.info(f"Reliability diagram not found at {img_path}. Run python src/run_calibration.py to generate it.")
 
@@ -517,7 +517,7 @@ with tab_calibration:
                     "Width (MW)": m_metrics.get("Width_90", "N/A"),
                     "ECE": m_metrics.get("ECE", "N/A"),
                 })
-            st.dataframe(pd.DataFrame(cal_rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(cal_rows), width="stretch", hide_index=True)
         else:
             st.info("Run python src/run_calibration.py to populate metrics.")
 
@@ -550,7 +550,7 @@ with tab_tsfm:
                 template="plotly_white",
                 height=320,
             )
-            st.plotly_chart(fig_mae, use_container_width=True)
+            st.plotly_chart(fig_mae, width="stretch")
 
         with col_sw2:
             fig_cov = go.Figure()
@@ -571,12 +571,12 @@ with tab_tsfm:
                 template="plotly_white",
                 height=320,
             )
-            st.plotly_chart(fig_cov, use_container_width=True)
+            st.plotly_chart(fig_cov, width="stretch")
 
         st.markdown("#### Context Sensitivity Table")
-        st.dataframe(sweep_df, use_container_width=True, hide_index=True)
+        st.dataframe(sweep_df, width="stretch", hide_index=True)
     else:
-        st.info("Run python src/run_tsfm_sweep.py to populate context scaling metrics.")
+        st.info("No context-length sweep has been regenerated under the current shared protocol. Older sweep results are archived and are not shown as current findings.")
 
 # -----------------------------------------------------------------------------
 # TAB 5: INTERACTIVE LIVE FORECASTING & SCENARIO SIMULATOR
@@ -774,7 +774,7 @@ with tab_simulator:
             legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center"),
             margin=dict(l=40, r=40, t=40, b=40),
         )
-        st.plotly_chart(fig_sim, use_container_width=True)
+        st.plotly_chart(fig_sim, width="stretch")
 
         peak_idx = int(np.argmax(simulated_p50))
         peak_time_str = future_timestamps[peak_idx].strftime("%b %d, %H:00")
@@ -799,7 +799,7 @@ with tab_simulator:
                 "Upper_Bound_P95_MW": np.round(p95, 1),
                 "Required_Reserve_MW": np.round(p95 - simulated_p50, 1),
             })
-            st.dataframe(df_sched, use_container_width=True, hide_index=True)
+            st.dataframe(df_sched, width="stretch", hide_index=True)
             csv_data = df_sched.to_csv(index=False)
             st.download_button(
                 "Download Simulated Dispatch CSV",

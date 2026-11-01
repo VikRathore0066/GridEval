@@ -10,6 +10,7 @@ import os
 ENV_RESULTS = os.environ.get("GRIDEVAL_RESULTS_DIR", None)
 RESULTS_DIR = Path(ENV_RESULTS) if ENV_RESULTS else (PROJECT_ROOT / "results")
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+RUN_PROTOCOL_VERSION = "shared-24-observation-v1"
 
 
 @dataclass
@@ -20,6 +21,7 @@ class ExperimentResult:
     runtime_seconds: float
     timestamp: str
     status: str
+    protocol_version: str
 
     def save(self) -> Path:
         out_path = RESULTS_DIR / f"{self.name}_run.json"
@@ -50,6 +52,7 @@ def execute_experiment(name: str, config: dict, pipeline_fn) -> ExperimentResult
         runtime_seconds=round(duration, 2),
         timestamp=datetime.now().isoformat(),
         status=status,
+        protocol_version=RUN_PROTOCOL_VERSION,
     )
     saved_path = result.save()
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Completed {name} in {duration:.1f}s (status: {status}) -> {saved_path}")

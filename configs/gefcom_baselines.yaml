@@ -13,7 +13,7 @@ features:
   rolling_windows: [24, 168]
   cyclical_encoding: true
   holiday_calendar: true
-  temperature: true
+  include_weather: false
 models:
   lightgbm:
     n_estimators: 1000

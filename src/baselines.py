@@ -124,7 +124,7 @@ def rolling_block_evaluation(
     }
 
 
-def run_baselines_for_dataset(dataset_name: str) -> dict:
+def run_baselines_for_dataset(dataset_name: str, include_weather: bool = False) -> dict:
     import lightgbm as lgb
     import xgboost as xgb
     print(f"\nRunning baseline models for {dataset_name.upper()}...")
@@ -134,7 +134,7 @@ def run_baselines_for_dataset(dataset_name: str) -> dict:
     df_feat = prepare_features(df, target_col, dataset_name)
 
     train, val, test = split_dataset(df_feat, dataset_name)
-    feature_cols = get_feature_columns(dataset_name)
+    feature_cols = get_feature_columns(dataset_name, include_weather=include_weather)
 
     X_train, y_train = train[feature_cols], train[target_col]
     X_val, y_val = val[feature_cols], val[target_col]
