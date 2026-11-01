@@ -93,7 +93,7 @@ The 90% interval uses the 5th and 95th percentile forecasts. No post-hoc interva
 - These results evaluate unadjusted forecast intervals; they do not show post-hoc calibration to 90%.
 - The default feature policy excludes weather. The results do not measure the effect of adding GEFCom weather features.
 - Each dataset uses a three-year training window, though earlier records are available. An expanded-history comparison has not been run.
-- The separate Chronos context-length sweep has not been regenerated under this shared evaluation protocol and is not used for these findings. Older sweep outputs and September 2026 run summaries are retained under `results/archive/legacy_pre_shared_protocol/` for provenance; they are excluded from current dashboard findings and experiment skip decisions.
+- The separate Chronos context-length sweep has not been regenerated under this shared evaluation protocol and is not used for these findings. Previous sweep outputs and obsolete run summaries were removed; no context-sweep results are shown as current findings until the sweep is rerun.
 
 ## Dashboard Structure (`app.py`)
 
@@ -118,7 +118,6 @@ GridEval/
 |-- results/            # Benchmark outputs (master_table.csv, calibration_master.csv)
 |   |-- ercot/          # Active ERCOT metrics and aligned forecasts
 |   |-- gefcom/         # Active GEFCom metrics and aligned forecasts
-|   |-- archive/        # Superseded pre-protocol result files, retained for provenance
 |   `-- plots/          # Reliability and calibration plots
 |-- src/                # Modular benchmark codebase
 |   |-- baselines.py        # GBDT and heuristic baseline models

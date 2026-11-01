@@ -576,7 +576,7 @@ with tab_tsfm:
         st.markdown("#### Context Sensitivity Table")
         st.dataframe(sweep_df, width="stretch", hide_index=True)
     else:
-        st.info("No context-length sweep has been regenerated under the current shared protocol. Older sweep results are archived and are not shown as current findings.")
+        st.info("No context-length sweep has been regenerated under the current shared protocol. Previous sweep outputs were removed and are not shown as current findings.")
 
 # -----------------------------------------------------------------------------
 # TAB 5: INTERACTIVE LIVE FORECASTING & SCENARIO SIMULATOR
