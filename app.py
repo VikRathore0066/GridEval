@@ -14,7 +14,7 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .stDeployButton, header[data-testid="stHeader"] {
+    .stDeployButton {
         display: none !important;
     }
     #MainMenu, footer {
