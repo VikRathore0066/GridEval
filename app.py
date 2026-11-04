@@ -611,12 +611,11 @@ with tab_simulator:
         )
 
         sim_model = st.selectbox(
-            "Inference Model Engine",
+            "Illustrative Scenario Curve",
             [
-                "LightGBM Quantile (Calibrated P05/P50/P95)",
-                "XGBoost Quantile (Calibrated P05/P50/P95)",
-                "Chronos-T5 Zero-Shot TSFM (Transformer)",
-                "Model Comparison (LightGBM vs Chronos Overlay)",
+                "Illustrative LightGBM-Style Scenario (Formula-Generated)",
+                "Illustrative XGBoost-Style Scenario (Formula-Generated)",
+                "Illustrative Chronos-Style Scenario (Formula-Generated)",
             ],
         )
 
@@ -717,7 +716,6 @@ with tab_simulator:
             interval_radius = grid_scale * 0.045
             p05 = simulated_p50 - interval_radius
             p95 = simulated_p50 + interval_radius
-            chronos_sim = simulated_p50 * (1.0 + 0.018 * np.sin(np.linspace(0, 3 * np.pi, sim_horizon_hours)))
 
         fig_sim = go.Figure()
 
@@ -754,13 +752,6 @@ with tab_simulator:
             marker=dict(size=4),
             name="Simulated Scenario Forecast P50 (Formula-Generated)",
         ))
-
-        if "Comparison" in sim_model:
-            fig_sim.add_trace(go.Scatter(
-                x=future_timestamps, y=chronos_sim,
-                mode="lines", line=dict(color="#f59e0b", width=2.2, dash="dash"),
-                name="Illustrative Formula-Generated Comparison Curve",
-            ))
 
         peak_threshold = np.max(simulated_p50)
         fig_sim.add_shape(
